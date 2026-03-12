@@ -7,13 +7,13 @@ Boilerplate for a Google ADK Python project with a live Gemini coordinator agent
 ```mermaid
 flowchart TD
     U[User]
-    A[Main Agent<br/>agents/agent.py (root_agent)]
-    I[Coordinator Instructions<br/>agents/instructions.md]
-    S1[Subagent 1<br/>subagents/subagent1/agent_factory.py]
-    S2[Subagent 2<br/>subagents/subagent2/agent_factory.py]
-    T1[Tool 1<br/>tools/tool1.py]
-    T2[Tool 2<br/>tools/tool2.py]
-    L[Tool Loader<br/>loader.py]
+    A[Main Agent - agents/agent.py root_agent]
+    I[Coordinator Instructions - agents/instructions.md]
+    S1[Subagent 1 - subagents/subagent1/agent_factory.py]
+    S2[Subagent 2 - subagents/subagent2/agent_factory.py]
+    T1[Tool 1 - tools/tool1.py]
+    T2[Tool 2 - tools/tool2.py]
+    L[Tool Loader - loader.py]
 
     U -->|Request| A
     I -->|System instructions| A
