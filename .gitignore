@@ -2,9 +2,12 @@
 __pycache__/
 *.py[cod]
 *.so
+.pytest_cache/
 
 # Local environment
 .env
+venv/
+*.log
 
 # OS
 .DS_Store
