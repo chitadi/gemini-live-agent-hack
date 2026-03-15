@@ -64,22 +64,22 @@ Replace `YOUR_PROJECT_ID` with the real GCP project ID, not the app name unless 
 On macOS/Linux:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 ```
 
 On Windows PowerShell:
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+python -m venv venv
+venv\Scripts\Activate.ps1
 ```
 
 If PowerShell blocks activation:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.venv\Scripts\Activate.ps1
+venv\Scripts\Activate.ps1
 ```
 
 ### 4. Install Dependencies
@@ -274,7 +274,7 @@ Use:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.venv\Scripts\Activate.ps1
+venv\Scripts\Activate.ps1
 ```
 
 ### `pip.exe` Blocked By Policy
