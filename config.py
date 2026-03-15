@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
+load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=True)
 
 
 def _read_bool(name: str, default: bool) -> bool:
@@ -23,6 +23,19 @@ def _read_required(name: str) -> str:
     return value
 
 
+def _read_optional(name: str) -> str | None:
+    value = os.getenv(name, "").strip()
+    return value or None
+
+
+def _read_optional_any(*names: str) -> str | None:
+    for name in names:
+        value = _read_optional(name)
+        if value:
+            return value
+    return None
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -34,6 +47,10 @@ class Settings:
     adk_live_model: str
     live_agent_voice: str
     live_agent_language_code: str
+    vertex_ai_search_app_id: str | None
+    vertex_ai_search_location: str
+    vertex_ai_search_serving_config_id: str
+    inspiration_image_results_per_query: int
     snapshot_interval_ms: int
     port: int
 
@@ -48,6 +65,16 @@ class Settings:
             "adk_live_model": self.adk_live_model,
             "live_agent_voice": self.live_agent_voice,
             "live_agent_language_code": self.live_agent_language_code,
+            "vertex_ai_search_configured": bool(
+                self.vertex_ai_search_app_id
+            ),
+            "vertex_ai_search_location": self.vertex_ai_search_location,
+            "vertex_ai_search_serving_config_id": (
+                self.vertex_ai_search_serving_config_id
+            ),
+            "inspiration_image_results_per_query": (
+                self.inspiration_image_results_per_query
+            ),
             "snapshot_interval_ms": self.snapshot_interval_ms,
             "port": self.port,
         }
@@ -67,6 +94,18 @@ def get_settings() -> Settings:
         ),
         live_agent_voice=os.getenv("LIVE_AGENT_VOICE", "Aoede"),
         live_agent_language_code=os.getenv("LIVE_AGENT_LANGUAGE_CODE", "en-US"),
+        vertex_ai_search_app_id=_read_optional_any(
+            "VERTEX_AI_SEARCH_APP_ID",
+            "VERTEX_AI_SEARCH_ENGINE_ID",
+            "DISCOVERY_ENGINE_APP_ID",
+        ),
+        vertex_ai_search_location=os.getenv("VERTEX_AI_SEARCH_LOCATION", "global"),
+        vertex_ai_search_serving_config_id=os.getenv(
+            "VERTEX_AI_SEARCH_SERVING_CONFIG_ID", "default_search"
+        ),
+        inspiration_image_results_per_query=int(
+            os.getenv("INSPIRATION_IMAGE_RESULTS_PER_QUERY", "3")
+        ),
         snapshot_interval_ms=int(os.getenv("SNAPSHOT_INTERVAL_MS", "2500")),
         port=int(os.getenv("PORT", "8080")),
     )

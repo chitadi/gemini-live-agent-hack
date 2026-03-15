@@ -14,6 +14,9 @@ const elements = {
   connectionStatus: document.getElementById("connectionStatus"),
   snapshotIntervalLabel: document.getElementById("snapshotIntervalLabel"),
   transcriptList: document.getElementById("transcriptList"),
+  inspirationStatus: document.getElementById("inspirationStatus"),
+  inspirationQueries: document.getElementById("inspirationQueries"),
+  inspirationGallery: document.getElementById("inspirationGallery"),
   cameraPreview: document.getElementById("cameraPreview"),
   snapshotCanvas: document.getElementById("snapshotCanvas"),
 };
@@ -48,10 +51,13 @@ const state = {
   cameraStream: null,
   cameraEnabled: false,
   snapshotTimerId: null,
+  sessionPollTimerId: null,
+  sessionContextRefreshInFlight: false,
 };
 
 const SPEECH_LEVEL_THRESHOLD = 120;
 const BARGE_IN_LEVEL_THRESHOLD = 900;
+const SESSION_CONTEXT_REFRESH_MS = 2500;
 
 function setStatus(text, detail = "") {
   elements.statusBadge.textContent = detail ? `${text}: ${detail}` : text;
@@ -59,6 +65,340 @@ function setStatus(text, detail = "") {
 
 function setConnectionStatus(text) {
   elements.connectionStatus.textContent = text;
+}
+
+function setInspirationStatus(text) {
+  elements.inspirationStatus.textContent = text;
+}
+
+function clearChildren(node) {
+  while (node.firstChild) {
+    node.removeChild(node.firstChild);
+  }
+}
+
+function renderInspirationQueries(queries) {
+  clearChildren(elements.inspirationQueries);
+
+  for (const query of queries) {
+    const chip = document.createElement("span");
+    chip.className = "query-chip";
+    chip.textContent = query;
+    elements.inspirationQueries.appendChild(chip);
+  }
+}
+
+function getInspirationResultHost(result) {
+  const candidateUrl = result.sourcePageUrl || result.imageUrl || result.thumbnailUrl;
+  if (!candidateUrl) {
+    return "Saved source";
+  }
+
+  try {
+    return new URL(candidateUrl).hostname.replace(/^www\./, "");
+  } catch (_error) {
+    return "Saved source";
+  }
+}
+
+function createInspirationImageFallback(result) {
+  const fallback = document.createElement("div");
+  fallback.className = "inspiration-image-fallback";
+
+  const label = document.createElement("strong");
+  label.textContent = "Preview unavailable";
+
+  const host = document.createElement("span");
+  host.textContent = getInspirationResultHost(result);
+
+  fallback.appendChild(label);
+  fallback.appendChild(host);
+  return fallback;
+}
+
+function buildGeneratedRenderUrl(session) {
+  const sessionId = String(session.session_id || state.sessionId || "").trim();
+  const version = encodeURIComponent(
+    String(session.latest_generated_render_path || "").trim()
+  );
+  if (!sessionId || !version) {
+    return "";
+  }
+  return `/api/live/session/${sessionId}/generated-render?v=${version}`;
+}
+
+function renderGeneratedRender(session) {
+  const renderUrl = buildGeneratedRenderUrl(session);
+  if (!renderUrl) {
+    return false;
+  }
+
+  clearChildren(elements.inspirationGallery);
+  setInspirationStatus("Final redesign ready");
+
+  const card = document.createElement("article");
+  card.className = "generated-render-card";
+
+  const link = document.createElement("a");
+  link.href = renderUrl;
+  link.target = "_blank";
+  link.rel = "noreferrer noopener";
+
+  const image = document.createElement("img");
+  image.src = renderUrl;
+  image.alt = "Generated redesign render";
+  image.loading = "eager";
+  image.addEventListener("error", () => {
+    if (card.isConnected) {
+      renderInspirationEmptyState(
+        "The redesigned image was saved, but it could not be loaded into the board."
+      );
+    }
+  });
+
+  const copy = document.createElement("div");
+  copy.className = "generated-render-copy";
+
+  const title = document.createElement("strong");
+  title.textContent = "Redesigned room render";
+
+  const meta = document.createElement("span");
+  meta.textContent = "Generated from saved snapshots and inspiration references";
+
+  copy.appendChild(title);
+  copy.appendChild(meta);
+  link.appendChild(image);
+  link.appendChild(copy);
+  card.appendChild(link);
+  elements.inspirationGallery.appendChild(card);
+  return true;
+}
+
+function renderInspirationGallery(session) {
+  const queries = Array.isArray(session.latest_inspiration_search_queries)
+    ? session.latest_inspiration_search_queries
+    : [];
+  const resultsByQuery = Array.isArray(session.latest_inspiration_image_results)
+    ? session.latest_inspiration_image_results
+    : [];
+
+  renderInspirationQueries(queries);
+  if (session.latest_generated_render_available) {
+    if (renderGeneratedRender(session)) {
+      return;
+    }
+  }
+
+  const flattenedResults = [];
+  for (const group of resultsByQuery) {
+    if (!group || typeof group !== "object") {
+      continue;
+    }
+
+    const query = String(group.query || "").trim();
+    const results = Array.isArray(group.results) ? group.results : [];
+    for (const result of results) {
+      if (!result || typeof result !== "object") {
+        continue;
+      }
+      flattenedResults.push({
+        query: String(result.query || query).trim(),
+        title: String(result.title || "").trim(),
+        imageUrl: String(result.image_url || "").trim(),
+        thumbnailUrl: String(result.thumbnail_url || "").trim(),
+        sourcePageUrl: String(result.source_page_url || "").trim(),
+        displayLink: String(result.display_link || "").trim(),
+      });
+    }
+  }
+
+  const visibleResults = flattenedResults
+    .filter((result) => result.imageUrl || result.thumbnailUrl)
+    .slice(0, 8);
+
+  clearChildren(elements.inspirationGallery);
+
+  if (visibleResults.length) {
+    if (
+      session.latest_tool_name === "generate_redesign_image" &&
+      session.latest_tool_status === "started"
+    ) {
+      setInspirationStatus("Generating redesign...");
+    } else if (
+      session.latest_tool_name === "generate_redesign_image" &&
+      session.latest_tool_status === "failed"
+    ) {
+      setInspirationStatus("Redesign failed");
+    } else {
+      setInspirationStatus(
+        `Showing ${visibleResults.length} saved image${visibleResults.length === 1 ? "" : "s"}`
+      );
+    }
+
+    for (const result of visibleResults) {
+      const card = document.createElement("article");
+      card.className = "inspiration-card";
+
+      const link = document.createElement("a");
+      link.href = result.sourcePageUrl || result.imageUrl || result.thumbnailUrl || "#";
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+
+      const image = document.createElement("img");
+      image.src = result.thumbnailUrl || result.imageUrl;
+      image.alt = result.title || result.query || "Saved inspiration image";
+      image.loading = "lazy";
+      image.referrerPolicy = "no-referrer";
+      image.addEventListener("error", () => {
+        if (image.src !== result.imageUrl && result.imageUrl) {
+          image.src = result.imageUrl;
+          return;
+        }
+        if (image.isConnected) {
+          image.replaceWith(createInspirationImageFallback(result));
+        }
+      });
+
+      const copy = document.createElement("div");
+      copy.className = "inspiration-copy";
+
+      const title = document.createElement("strong");
+      title.textContent = result.title || result.query || "Inspiration result";
+
+      const meta = document.createElement("span");
+      meta.textContent = result.query || result.displayLink || "Saved result";
+
+      copy.appendChild(title);
+      copy.appendChild(meta);
+      link.appendChild(image);
+      link.appendChild(copy);
+      card.appendChild(link);
+      elements.inspirationGallery.appendChild(card);
+    }
+
+    return;
+  }
+
+  if (
+    session.latest_tool_name === "generate_redesign_image" &&
+    session.latest_tool_status === "started"
+  ) {
+    setInspirationStatus("Generating redesign...");
+    renderInspirationEmptyState(
+      "Inspiration matches are saved. The generator is turning them into a redesigned room image now."
+    );
+    return;
+  }
+
+  if (
+    session.latest_tool_name === "generate_redesign_image" &&
+    session.latest_tool_status === "failed"
+  ) {
+    setInspirationStatus("Redesign failed");
+    renderInspirationEmptyState(
+      session.latest_tool_detail ||
+        "The redesign generator failed before it could save a final image."
+    );
+    return;
+  }
+
+  if (
+    session.latest_tool_name === "search_inspiration_images" &&
+    session.latest_tool_status === "failed"
+  ) {
+    setInspirationStatus("Image search failed");
+    renderInspirationEmptyState(
+      session.latest_tool_detail ||
+        "The image-search tool failed before it could save results."
+    );
+    return;
+  }
+
+  if (
+    session.latest_tool_name === "search_inspiration_images" &&
+    session.latest_tool_status === "started"
+  ) {
+    setInspirationStatus("Searching...");
+    renderInspirationEmptyState(
+      "The agent is currently searching for image matches. Results should appear here automatically."
+    );
+    return;
+  }
+
+  if (queries.length) {
+    setInspirationStatus("Plan saved, waiting for image matches");
+    renderInspirationEmptyState(
+      "Search queries are saved for this brief, but no image matches have been saved yet."
+    );
+    return;
+  }
+
+  setInspirationStatus("Waiting for inspiration images");
+  renderInspirationEmptyState(
+    "Start a redesign brief and let the agent save image matches. The strongest few results will show up here."
+  );
+}
+
+function renderInspirationEmptyState(message) {
+  clearChildren(elements.inspirationGallery);
+  const empty = document.createElement("article");
+  empty.className = "inspiration-empty";
+  empty.textContent = message;
+  elements.inspirationGallery.appendChild(empty);
+}
+
+function applySessionContext(session) {
+  if (!session || typeof session !== "object") {
+    return;
+  }
+
+  if (typeof session.snapshot_count === "number" && session.snapshot_count >= 0) {
+    state.snapshotCount = session.snapshot_count;
+    updateSnapshotCount();
+  }
+
+  renderInspirationGallery(session);
+}
+
+async function refreshSessionContext() {
+  if (!state.sessionId || state.sessionContextRefreshInFlight) {
+    return;
+  }
+
+  state.sessionContextRefreshInFlight = true;
+  try {
+    const response = await fetch(`/api/live/session/${state.sessionId}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    applySessionContext(payload.session);
+  } catch (_error) {
+    // Ignore session polling errors so the live demo can continue uninterrupted.
+  } finally {
+    state.sessionContextRefreshInFlight = false;
+  }
+}
+
+function startSessionPolling() {
+  stopSessionPolling();
+  refreshSessionContext();
+  state.sessionPollTimerId = window.setInterval(
+    refreshSessionContext,
+    SESSION_CONTEXT_REFRESH_MS
+  );
+}
+
+function stopSessionPolling() {
+  if (!state.sessionPollTimerId) {
+    return;
+  }
+
+  window.clearInterval(state.sessionPollTimerId);
+  state.sessionPollTimerId = null;
 }
 
 function appendBubble(role, text, { append = false } = {}) {
@@ -517,6 +857,7 @@ async function startDemo() {
   elements.sessionBadge.textContent = `Session: ${state.sessionId.slice(0, 8)}`;
   elements.snapshotIntervalLabel.textContent = `Snapshot cadence: ${state.snapshotIntervalMs} ms`;
   updateSnapshotCount();
+  startSessionPolling();
 
   connectWebSocket();
 }
@@ -581,6 +922,7 @@ function connectWebSocket() {
       resetAgentTurnState();
       const label = message.interrupted ? "Interrupted" : "Turn complete";
       setStatus(label);
+      refreshSessionContext();
       return;
     }
 
@@ -592,6 +934,7 @@ function connectWebSocket() {
   state.websocket.onclose = () => {
     setStatus("Disconnected");
     setConnectionStatus("Disconnected");
+    stopSessionPolling();
     setControlsEnabled(false);
     closeCurrentAgentBubble();
     closeCurrentUserBubble();
@@ -644,6 +987,7 @@ function handleStatusMessage(message) {
   } else if (message.state === "error") {
     appendBubble("system", `Error: ${detail}`);
     setStatus("Error", detail);
+    refreshSessionContext();
   } else if (message.state === "unsupported_message") {
     appendBubble("system", detail);
   } else {

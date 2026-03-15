@@ -211,6 +211,12 @@ button:disabled {
   animation: rise 820ms ease-out;
 }
 
+.inspiration-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  animation: rise 940ms ease-out;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -293,6 +299,158 @@ video {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.72rem;
+}
+
+.inspiration-queries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.query-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 247, 236, 0.92);
+  border: 1px solid rgba(91, 68, 50, 0.14);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.inspiration-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+}
+
+.inspiration-card,
+.inspiration-empty {
+  border-radius: 24px;
+  border: 1px solid rgba(91, 68, 50, 0.12);
+  background: rgba(255, 252, 247, 0.9);
+  box-shadow: 0 14px 28px rgba(67, 47, 34, 0.08);
+}
+
+.inspiration-empty {
+  padding: 1rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.inspiration-card {
+  overflow: hidden;
+}
+
+.inspiration-card a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.inspiration-card img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  display: block;
+  background: rgba(36, 28, 23, 0.1);
+}
+
+.inspiration-image-fallback {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  display: grid;
+  place-content: center;
+  gap: 0.35rem;
+  padding: 1rem;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(255, 243, 228, 0.95), rgba(239, 229, 217, 0.9)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(189, 93, 56, 0.06),
+      rgba(189, 93, 56, 0.06) 12px,
+      rgba(255, 255, 255, 0.18) 12px,
+      rgba(255, 255, 255, 0.18) 24px
+    );
+  color: var(--muted);
+}
+
+.inspiration-image-fallback strong,
+.inspiration-image-fallback span {
+  display: block;
+}
+
+.inspiration-image-fallback strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.inspiration-image-fallback span {
+  font-size: 0.8rem;
+}
+
+.inspiration-copy {
+  padding: 0.8rem 0.85rem 0.95rem;
+}
+
+.inspiration-copy strong,
+.inspiration-copy span {
+  display: block;
+}
+
+.inspiration-copy strong {
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.inspiration-copy span {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.generated-render-card {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(91, 68, 50, 0.12);
+  background: rgba(255, 252, 247, 0.94);
+  box-shadow: 0 18px 36px rgba(67, 47, 34, 0.1);
+}
+
+.generated-render-card a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.generated-render-card img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: rgba(36, 28, 23, 0.08);
+}
+
+.generated-render-copy {
+  padding: 0.9rem 1rem 1rem;
+}
+
+.generated-render-copy strong,
+.generated-render-copy span {
+  display: block;
+}
+
+.generated-render-copy strong {
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.generated-render-copy span {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 @keyframes rise {

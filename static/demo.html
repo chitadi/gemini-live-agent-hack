@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gemini Live Decorator Demo</title>
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/static/demo.css" />
   </head>
   <body>
@@ -77,6 +78,22 @@
           </div>
           <div id="transcriptList" class="transcript-list"></div>
         </section>
+      </section>
+
+      <section class="inspiration-panel card">
+        <div class="panel-header">
+          <div>
+            <p class="panel-label">Inspiration Board</p>
+            <h2>Saved references and the final redesign appear here during the live session</h2>
+          </div>
+          <p class="panel-status" id="inspirationStatus">Waiting for inspiration images</p>
+        </div>
+        <div id="inspirationQueries" class="inspiration-queries"></div>
+        <div id="inspirationGallery" class="inspiration-gallery">
+          <article class="inspiration-empty">
+            Start a redesign brief and let the agent save image matches. The strongest few results will show up here.
+          </article>
+        </div>
       </section>
     </main>
 

@@ -25,7 +25,6 @@ from services.storage_store import get_storage_store
 logger = logging.getLogger(__name__)
 
 DEMO_USER_ID = "demo-user"
-MAX_RECENT_OBSERVATIONS = 5
 
 
 @dataclass
@@ -38,7 +37,16 @@ class LiveSessionMetadata:
     latest_snapshot_path: str | None = None
     latest_snapshot_timestamp_ms: int | None = None
     snapshot_count: int = 0
-    recent_observations: list[str] = field(default_factory=list)
+    latest_design_brief: str | None = None
+    latest_inspiration_search_queries: list[str] = field(default_factory=list)
+    latest_inspiration_image_results: list[dict[str, object]] = field(
+        default_factory=list
+    )
+    latest_generated_render_path: str | None = None
+    latest_generated_render_mime_type: str | None = None
+    latest_tool_name: str | None = None
+    latest_tool_status: str | None = None
+    latest_tool_detail: str | None = None
     latest_user_transcript: str | None = None
     latest_agent_transcript: str | None = None
     primer_sent: bool = False
@@ -109,6 +117,80 @@ class LiveRuntimeManager:
 
     def get_session_context(self, session_id: str) -> dict[str, object]:
         metadata = self._require_session(session_id)
+        persisted_session = self._firestore_store.get_live_session(session_id)
+        if persisted_session:
+            self._merge_persisted_session_context(
+                metadata=metadata,
+                persisted_session=persisted_session,
+            )
+        return self._serialize_session_context(metadata)
+
+    def get_persisted_session_context(self, session_id: str) -> dict[str, object]:
+        metadata = self._sessions.get(session_id)
+        if metadata is not None:
+            return self.get_session_context(session_id)
+
+        persisted_session = self._firestore_store.get_live_session(session_id)
+        if persisted_session is None:
+            raise KeyError(f"Unknown live session `{session_id}`.")
+
+        snapshot_interval_ms = self._read_snapshot_interval_ms(persisted_session)
+        latest_snapshot_path = _read_optional_text(
+            persisted_session.get("latest_snapshot_path")
+        )
+        return {
+            "session_id": _read_optional_text(
+                persisted_session.get("session_id")
+            )
+            or session_id,
+            "status": _read_optional_text(persisted_session.get("status")) or "created",
+            "snapshot_interval_ms": snapshot_interval_ms,
+            "latest_snapshot_path": latest_snapshot_path,
+            "latest_snapshot_timestamp_ms": _read_optional_int(
+                persisted_session.get("latest_snapshot_timestamp_ms")
+            ),
+            "latest_snapshot_available": latest_snapshot_path is not None,
+            "snapshot_count": _read_nonnegative_int(
+                persisted_session.get("snapshot_count")
+            ),
+            "latest_design_brief": _read_optional_text(
+                persisted_session.get("latest_design_brief")
+            ),
+            "latest_inspiration_search_queries": _read_string_list(
+                persisted_session.get("latest_inspiration_search_queries")
+            ),
+            "latest_inspiration_image_results": _read_dict_list(
+                persisted_session.get("latest_inspiration_image_results")
+            ),
+            "latest_generated_render_path": _read_optional_text(
+                persisted_session.get("latest_generated_render_path")
+            ),
+            "latest_generated_render_mime_type": _read_optional_text(
+                persisted_session.get("latest_generated_render_mime_type")
+            ),
+            "latest_generated_render_available": bool(
+                _read_optional_text(persisted_session.get("latest_generated_render_path"))
+            ),
+            "latest_tool_name": _read_optional_text(
+                persisted_session.get("latest_tool_name")
+            ),
+            "latest_tool_status": _read_optional_text(
+                persisted_session.get("latest_tool_status")
+            ),
+            "latest_tool_detail": _read_optional_text(
+                persisted_session.get("latest_tool_detail")
+            ),
+            "latest_user_transcript": _read_optional_text(
+                persisted_session.get("latest_user_transcript")
+            ),
+            "latest_agent_transcript": _read_optional_text(
+                persisted_session.get("latest_agent_transcript")
+            ),
+        }
+
+    def _serialize_session_context(
+        self, metadata: LiveSessionMetadata
+    ) -> dict[str, object]:
         return {
             "session_id": metadata.session_id,
             "status": metadata.status,
@@ -117,10 +199,97 @@ class LiveRuntimeManager:
             "latest_snapshot_timestamp_ms": metadata.latest_snapshot_timestamp_ms,
             "latest_snapshot_available": metadata.latest_snapshot_path is not None,
             "snapshot_count": metadata.snapshot_count,
-            "recent_observations": list(metadata.recent_observations),
+            "latest_design_brief": metadata.latest_design_brief,
+            "latest_inspiration_search_queries": list(
+                metadata.latest_inspiration_search_queries
+            ),
+            "latest_inspiration_image_results": list(
+                metadata.latest_inspiration_image_results
+            ),
+            "latest_generated_render_path": metadata.latest_generated_render_path,
+            "latest_generated_render_mime_type": metadata.latest_generated_render_mime_type,
+            "latest_generated_render_available": (
+                metadata.latest_generated_render_path is not None
+            ),
+            "latest_tool_name": metadata.latest_tool_name,
+            "latest_tool_status": metadata.latest_tool_status,
+            "latest_tool_detail": metadata.latest_tool_detail,
             "latest_user_transcript": metadata.latest_user_transcript,
             "latest_agent_transcript": metadata.latest_agent_transcript,
         }
+
+    def _merge_persisted_session_context(
+        self,
+        *,
+        metadata: LiveSessionMetadata,
+        persisted_session: dict[str, object],
+    ) -> None:
+        metadata.status = _read_optional_text(persisted_session.get("status")) or (
+            metadata.status
+        )
+        metadata.snapshot_interval_ms = self._read_snapshot_interval_ms(
+            persisted_session,
+            fallback=metadata.snapshot_interval_ms,
+        )
+        metadata.latest_snapshot_path = _read_optional_text(
+            persisted_session.get("latest_snapshot_path")
+        )
+        metadata.latest_snapshot_timestamp_ms = _read_optional_int(
+            persisted_session.get("latest_snapshot_timestamp_ms")
+        )
+        metadata.snapshot_count = _read_nonnegative_int(
+            persisted_session.get("snapshot_count"),
+            fallback=metadata.snapshot_count,
+        )
+        metadata.latest_design_brief = _read_optional_text(
+            persisted_session.get("latest_design_brief")
+        )
+        metadata.latest_inspiration_search_queries = _read_string_list(
+            persisted_session.get("latest_inspiration_search_queries")
+        )
+        metadata.latest_inspiration_image_results = _read_dict_list(
+            persisted_session.get("latest_inspiration_image_results")
+        )
+        metadata.latest_generated_render_path = _read_optional_text(
+            persisted_session.get("latest_generated_render_path")
+        )
+        metadata.latest_generated_render_mime_type = _read_optional_text(
+            persisted_session.get("latest_generated_render_mime_type")
+        )
+        metadata.latest_tool_name = _read_optional_text(
+            persisted_session.get("latest_tool_name")
+        )
+        metadata.latest_tool_status = _read_optional_text(
+            persisted_session.get("latest_tool_status")
+        )
+        metadata.latest_tool_detail = _read_optional_text(
+            persisted_session.get("latest_tool_detail")
+        )
+        metadata.latest_user_transcript = _read_optional_text(
+            persisted_session.get("latest_user_transcript")
+        )
+        metadata.latest_agent_transcript = _read_optional_text(
+            persisted_session.get("latest_agent_transcript")
+        )
+
+    def _read_snapshot_interval_ms(
+        self,
+        persisted_session: dict[str, object],
+        *,
+        fallback: int | None = None,
+    ) -> int:
+        initial_state = persisted_session.get("initial_state")
+        snapshot_interval_ms = None
+        if isinstance(initial_state, dict):
+            snapshot_interval_ms = initial_state.get("snapshot_interval_ms")
+        return _read_nonnegative_int(
+            snapshot_interval_ms,
+            fallback=(
+                fallback
+                if fallback is not None
+                else get_settings().snapshot_interval_ms
+            ),
+        )
 
     def build_instruction_context(self, session_id: str) -> str:
         if not session_id or session_id not in self._sessions:
@@ -141,11 +310,21 @@ class LiveRuntimeManager:
                 "- No room snapshot has been captured yet. Ask the user to point the camera at the room."
             )
 
-        observations = metadata.recent_observations[-3:]
-        observation_line = (
-            "- Saved scan observations: " + " | ".join(observations)
-            if observations
-            else "- No scan observations have been saved yet."
+        search_plan_line = (
+            "- Latest inspiration search plan: "
+            + " | ".join(metadata.latest_inspiration_search_queries[:3])
+            if metadata.latest_inspiration_search_queries
+            else "- No inspiration search plan has been saved yet."
+        )
+        image_result_line = (
+            "- Inspiration image matches are saved for the latest search plan."
+            if metadata.latest_inspiration_image_results
+            else "- No inspiration image matches have been saved yet."
+        )
+        generated_render_line = (
+            "- A redesigned room render has already been generated for this session."
+            if metadata.latest_generated_render_path
+            else "- No redesigned room render has been generated yet."
         )
 
         return "\n".join(
@@ -154,7 +333,9 @@ class LiveRuntimeManager:
                 f"- Session status: {metadata.status}.",
                 "- Persona anchor: a playful but practical interior decorator with strong visual opinions.",
                 snapshot_line,
-                observation_line,
+                search_plan_line,
+                image_result_line,
+                generated_render_line,
                 "- Camera frames arrive as periodic JPEG snapshots rather than continuous video.",
                 "- Guide the scan one move at a time with prompts like 'show me the wall opposite the bed' or 'tilt down toward the floor'.",
                 "- When the scan begins, briefly introduce yourself as the decorator and ask for one useful room angle.",
@@ -378,24 +559,135 @@ class LiveRuntimeManager:
             payload={"source": source},
         )
 
-    def persist_snapshot_observation(self, *, session_id: str, note: str) -> dict[str, object]:
-        cleaned = note.strip()
-        if not cleaned:
-            raise ValueError("Observation note must not be empty.")
-
+    def record_tool_activity(
+        self,
+        *,
+        session_id: str,
+        tool_name: str,
+        status: str,
+        detail: str,
+    ) -> dict[str, object]:
         metadata = self._require_session(session_id)
-        metadata.recent_observations.append(cleaned)
-        metadata.recent_observations = metadata.recent_observations[
-            -MAX_RECENT_OBSERVATIONS:
-        ]
+        metadata.latest_tool_name = tool_name
+        metadata.latest_tool_status = status
+        metadata.latest_tool_detail = detail
+        log_level = logging.INFO
+        if status == "failed":
+            log_level = logging.WARNING
+        logger.log(
+            log_level,
+            "[tool][session=%s][%s] %s - %s",
+            session_id,
+            status,
+            tool_name,
+            detail,
+        )
         self._firestore_store.append_live_event(
             session_id=session_id,
-            event_type="agent_observation",
-            payload={"note": cleaned},
+            event_type="tool_activity",
+            payload={
+                "tool_name": tool_name,
+                "status": status,
+                "detail": detail,
+            },
         )
         self._firestore_store.update_live_session(
             session_id,
-            recent_observations=list(metadata.recent_observations),
+            latest_tool_name=tool_name,
+            latest_tool_status=status,
+            latest_tool_detail=detail,
+        )
+        return self.get_session_context(session_id)
+
+    def save_inspiration_search_plan(
+        self,
+        *,
+        session_id: str,
+        user_query: str,
+        search_queries: list[str],
+    ) -> dict[str, object]:
+        cleaned_query = user_query.strip()
+        cleaned_queries = [query.strip() for query in search_queries if query.strip()]
+
+        if not cleaned_query:
+            raise ValueError("User query must not be empty.")
+
+        if not cleaned_queries:
+            raise ValueError("Search queries must not be empty.")
+
+        metadata = self._require_session(session_id)
+        metadata.latest_design_brief = cleaned_query
+        metadata.latest_inspiration_search_queries = cleaned_queries
+        self._firestore_store.append_live_event(
+            session_id=session_id,
+            event_type="inspiration_search_plan_saved",
+            payload={
+                "user_query": cleaned_query,
+                "search_queries": cleaned_queries,
+            },
+        )
+        self._firestore_store.update_live_session(
+            session_id,
+            latest_design_brief=cleaned_query,
+            latest_inspiration_search_queries=list(cleaned_queries),
+        )
+        return self.get_session_context(session_id)
+
+    def save_inspiration_image_results(
+        self,
+        *,
+        session_id: str,
+        image_results_by_query: list[dict[str, object]],
+    ) -> dict[str, object]:
+        if not image_results_by_query:
+            raise ValueError("Image search results must not be empty.")
+
+        metadata = self._require_session(session_id)
+        metadata.latest_inspiration_image_results = image_results_by_query
+        self._firestore_store.append_live_event(
+            session_id=session_id,
+            event_type="inspiration_image_results_saved",
+            payload={
+                "query_count": len(image_results_by_query),
+                "results_by_query": image_results_by_query,
+            },
+        )
+        self._firestore_store.update_live_session(
+            session_id,
+            latest_inspiration_image_results=image_results_by_query,
+        )
+        return self.get_session_context(session_id)
+
+    def save_generated_render(
+        self,
+        *,
+        session_id: str,
+        render_details: dict[str, object],
+        model_name: str,
+        prompt_summary: str,
+    ) -> dict[str, object]:
+        object_path = str(render_details.get("object_path", "")).strip()
+        content_type = str(render_details.get("content_type", "")).strip()
+        if not object_path:
+            raise ValueError("Generated render object path must not be empty.")
+
+        metadata = self._require_session(session_id)
+        metadata.latest_generated_render_path = object_path
+        metadata.latest_generated_render_mime_type = content_type or None
+        self._firestore_store.append_live_event(
+            session_id=session_id,
+            event_type="generated_render_saved",
+            payload={
+                "object_path": object_path,
+                "content_type": content_type,
+                "model_name": model_name.strip(),
+                "prompt_summary": prompt_summary.strip(),
+            },
+        )
+        self._firestore_store.update_live_session(
+            session_id,
+            latest_generated_render_path=metadata.latest_generated_render_path,
+            latest_generated_render_mime_type=metadata.latest_generated_render_mime_type,
         )
         return self.get_session_context(session_id)
 
@@ -427,16 +719,17 @@ class LiveRuntimeManager:
             ),
             turn_coverage=genai_types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
         )
-        return RunConfig(
-            response_modalities=[
-                genai_types.Modality.AUDIO,
-            ],
+        run_config = RunConfig(
             speech_config=speech_config,
             input_audio_transcription=genai_types.AudioTranscriptionConfig(),
             output_audio_transcription=genai_types.AudioTranscriptionConfig(),
             realtime_input_config=realtime_input_config,
             tool_thread_pool_config=ToolThreadPoolConfig(max_workers=4),
         )
+        # Assign after initialization so ADK preserves the enum instead of
+        # coercing it to a plain string, which avoids noisy serializer warnings.
+        run_config.response_modalities = [genai_types.Modality.AUDIO]
+        return run_config
 
     async def _handle_input_transcription(
         self,
@@ -503,3 +796,47 @@ class LiveRuntimeManager:
 @lru_cache(maxsize=1)
 def get_live_runtime_manager() -> LiveRuntimeManager:
     return LiveRuntimeManager()
+
+
+def _read_optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    return text or None
+
+
+def _read_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_nonnegative_int(value: object, fallback: int = 0) -> int:
+    parsed = _read_optional_int(value)
+    if parsed is None:
+        return fallback
+    return max(0, parsed)
+
+
+def _read_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    cleaned_values: list[str] = []
+    for item in value:
+        text = _read_optional_text(item)
+        if text is not None:
+            cleaned_values.append(text)
+    return cleaned_values
+
+
+def _read_dict_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+
+    return [item for item in value if isinstance(item, dict)]

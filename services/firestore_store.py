@@ -44,6 +44,8 @@ class FirestoreStore:
                 "updated_at": firestore.SERVER_TIMESTAMP,
                 "latest_snapshot_path": None,
                 "latest_snapshot_timestamp_ms": None,
+                "latest_generated_render_path": None,
+                "latest_generated_render_mime_type": None,
                 "initial_state": initial_state,
             },
             merge=True,
@@ -72,6 +74,15 @@ class FirestoreStore:
                 "created_at": firestore.SERVER_TIMESTAMP,
             }
         )
+
+    def get_live_session(self, session_id: str) -> dict[str, Any] | None:
+        snapshot = self._live_session_doc(session_id).get()
+        if not snapshot.exists:
+            return None
+
+        payload = snapshot.to_dict() or {}
+        payload.setdefault("session_id", session_id)
+        return payload
 
     def _live_session_doc(self, session_id: str):
         return self.client.collection("live_sessions").document(session_id)

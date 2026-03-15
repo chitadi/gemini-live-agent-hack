@@ -1,7 +1,14 @@
-from tools.tool1 import persist_snapshot_observation
-from tools.tool2 import get_live_session_context
+from google.adk.tools import AgentTool
+
+from subagents.generator import generator_agent
+from tools.inspiration_image_search import search_inspiration_images
+from tools.inspiration_search_plan import store_inspiration_search_queries
 
 
 def load_tools():
     """Return all tool callables enabled for the coordinator agent."""
-    return [get_live_session_context, persist_snapshot_observation]
+    return [
+        store_inspiration_search_queries,
+        search_inspiration_images,
+        AgentTool(agent=generator_agent),
+    ]

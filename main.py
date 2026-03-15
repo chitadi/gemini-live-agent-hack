@@ -4,7 +4,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from google.auth import default as google_auth_default
@@ -117,6 +124,44 @@ async def create_live_session(request: Request) -> dict[str, object]:
         ),
         "snapshot_interval_ms": session.snapshot_interval_ms,
     }
+
+
+@app.get("/api/live/session/{session_id}")
+def live_session_view(session_id: str, response: Response) -> dict[str, object]:
+    manager = get_live_runtime_manager()
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        session = manager.get_persisted_session_context(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown live session.") from exc
+    return {
+        "session": session,
+    }
+
+
+@app.get("/api/live/session/{session_id}/generated-render")
+def live_generated_render_view(session_id: str, response: Response) -> Response:
+    manager = get_live_runtime_manager()
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        session = manager.get_persisted_session_context(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown live session.") from exc
+
+    object_path = str(session.get("latest_generated_render_path") or "").strip()
+    if not object_path:
+        raise HTTPException(status_code=404, detail="No generated render is available.")
+
+    try:
+        render = get_storage_store().download_object(object_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return Response(
+        content=bytes(render["data"]),
+        media_type=str(render["content_type"] or "application/octet-stream"),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.websocket("/api/live/ws/{session_id}", name="live_ws")
