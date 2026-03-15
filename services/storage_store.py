@@ -26,6 +26,29 @@ class StorageStore:
             "location": bucket.location,
         }
 
+    def save_session_snapshot(
+        self,
+        *,
+        session_id: str,
+        timestamp_ms: int,
+        image_bytes: bytes,
+        content_type: str = "image/jpeg",
+    ) -> dict[str, object]:
+        if not image_bytes:
+            raise ValueError("Snapshot payload was empty.")
+
+        object_path = f"sessions/{session_id}/snapshots/{timestamp_ms}.jpg"
+        blob = self.client.bucket(self.bucket_name).blob(object_path)
+        blob.upload_from_string(image_bytes, content_type=content_type)
+
+        return {
+            "bucket": self.bucket_name,
+            "object_path": object_path,
+            "gs_uri": f"gs://{self.bucket_name}/{object_path}",
+            "content_type": content_type,
+            "size_bytes": len(image_bytes),
+        }
+
 
 @lru_cache(maxsize=1)
 def get_storage_store() -> StorageStore:

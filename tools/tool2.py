@@ -1,18 +1,18 @@
-from typing import Dict, List
+from google.adk.tools import ToolContext
+
+from services.live_runtime import get_live_runtime_manager
 
 
+def get_live_session_context(tool_context: ToolContext) -> dict[str, object]:
+    """Return the current live-session metadata available to the agent."""
+    session_id = str(tool_context.state.get("session_id", "")).strip()
+    if not session_id:
+        return {
+            "available": False,
+            "reason": "Live session ID was unavailable in tool context.",
+        }
 
-def build_follow_up_questions(topic: str, count: int = 3) -> Dict[str, List[str]]:
-    """Generate simple follow-up questions for interactive live sessions."""
-    n = max(1, min(count, 5))
-    cleaned_topic = topic.strip() or "the request"
-
-    questions = [
-        f"What is the main goal for {cleaned_topic}?",
-        f"What constraints should I follow for {cleaned_topic}?",
-        f"What output format do you want for {cleaned_topic}?",
-        f"Should I optimize for speed or depth on {cleaned_topic}?",
-        f"Do you want examples for {cleaned_topic}?",
-    ]
-
-    return {"questions": questions[:n]}
+    return {
+        "available": True,
+        **get_live_runtime_manager().get_session_context(session_id),
+    }

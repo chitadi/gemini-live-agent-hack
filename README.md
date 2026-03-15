@@ -1,94 +1,54 @@
 # gemini-live-agent-hack
 
-Boilerplate for a Google ADK Python project with a live Gemini coordinator agent, pluggable tools, and a Google Cloud-native Phase 0 backend.
+Phase 1 of a Google Cloud-native live multimodal room-decorator demo built with FastAPI, Google ADK, Vertex AI Live, Firestore, and Cloud Storage.
 
-## ADK Flow Diagram
+If you want the full implementation story, architecture notes, design tradeoffs, prompt strategy, file map, and debugging notes for Phase 1, read [PHASE1.md](./PHASE1.md).
+
+## Phase 1 Summary
+
+Phase 1 turns the project into a live decorator shell:
+
+- the user can speak instead of typing
+- the agent can answer in voice
+- the browser can show the room and send periodic snapshots
+- the agent can guide a room scan in a decorator persona
+- the user can interrupt the agent naturally
+
+## Phase 1 Architecture
 
 ```mermaid
 flowchart TD
-    U[User]
-    A[Main Agent - agents/agent.py root_agent]
-    I[Coordinator Instructions - agents/instructions.md]
-    S1[Subagent 1 - subagents/subagent1/agent_factory.py]
-    S2[Subagent 2 - subagents/subagent2/agent_factory.py]
-    T1[Tool 1 - tools/tool1.py]
-    T2[Tool 2 - tools/tool2.py]
-    L[Tool Loader - loader.py]
+    U[Browser Demo]
+    W[FastAPI WebSocket Gateway]
+    A[ADK Live Agent]
+    F[Firestore]
+    S[Cloud Storage]
 
-    U -->|Request| A
-    I -->|System instructions| A
-    L -->|Load tool callables| A
-    A -->|Instructions + task context| S1
-    A -->|Instructions + task context| S2
-    S1 -->|Tool call| T1
-    S2 -->|Tool call| T2
-    T1 -->|Tool output| S1
-    T2 -->|Tool output| S2
-    S1 -->|Subagent result| A
-    S2 -->|Subagent result| A
-    A -->|Final response| U
+    U -->|text audio snapshots| W
+    W -->|LiveRequestQueue| A
+    A -->|voice partial text turn events| W
+    W -->|streamed audio transcript status| U
+    W -->|session metadata| F
+    W -->|room snapshots| S
 ```
 
-## Directory Structure
+## Bootstrapping
 
-```txt
-gemini-live-agent-hack/
-├── agents/
-│   ├── __init__.py
-│   ├── agent.py
-│   └── instructions.md
-├── config.py
-├── main.py
-├── subagents/
-│   ├── __init__.py
-│   ├── subagent1/
-│   │   ├── __init__.py
-│   │   ├── agent_factory.py
-│   │   └── instructions.md
-│   └── subagent2/
-│       ├── __init__.py
-│       ├── agent_factory.py
-│       └── instructions.md
-├── services/
-│   ├── __init__.py
-│   ├── firestore_store.py
-│   └── storage_store.py
-├── loader.py
-├── tools/
-│   ├── __init__.py
-│   ├── tool1.py
-│   └── tool2.py
-├── .dockerignore
-├── .env.example
-├── Dockerfile
-├── refs/
-│   ├── llms.txt
-│   └── llms-full.txt
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
+This is the teammate-facing setup section for running Phase 1 locally from scratch.
 
-## Phase 0 Notes
+### 1. Prerequisites
 
-- `agents/agent.py` defines `root_agent` (ADK convention).
-- `agents/__init__.py` exposes the module for ADK discovery.
-- `loader.py` centralizes tool registration for the coordinator.
-- `main.py` is the Cloud Run / FastAPI entrypoint for the backend shell.
-- `config.py` validates Vertex-first runtime configuration from `.env`.
-- `services/firestore_store.py` and `services/storage_store.py` validate Firestore and Cloud Storage connectivity.
-- Default model is `gemini-2.5-flash-live-001`; override with `ADK_LIVE_MODEL`.
+Make sure you have:
 
-## Why Firestore and Cloud Storage
+- Python 3.12 or similar installed
+- Google Cloud CLI installed
+- access to the target Google Cloud project
+- a Firestore database already created
+- a GCS bucket already created for snapshot storage
 
-- `Firestore` stores structured application state: sessions, style profiles, design briefs, feedback history, and product metadata.
-- `Cloud Storage` stores large binary assets: room snapshots, inspiration images, and generated renders.
+### 2. Authenticate Google Cloud
 
-One can technically use only Cloud Storage, but that makes session state and querying painful. One can also technically use only Firestore, but it is the wrong place for heavy media files. The split is intentional.
-
-## Local Setup
-
-1. Install the Google Cloud CLI and authenticate:
+Run:
 
 ```bash
 gcloud auth login
@@ -97,20 +57,40 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud auth application-default set-quota-project YOUR_PROJECT_ID
 ```
 
-2. Create and activate a virtual environment:
+Replace `YOUR_PROJECT_ID` with the real GCP project ID, not the app name unless they are the same.
+
+### 3. Create And Activate A Virtual Environment
+
+On macOS/Linux:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-3. Install dependencies:
+On Windows PowerShell:
+
+```powershell
+python -m venv venv
+venv\Scripts\Activate.ps1
+```
+
+If PowerShell blocks activation:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+venv\Scripts\Activate.ps1
+```
+
+### 4. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-4. Copy `.env.example` into `.env` and fill in your project values:
+### 5. Create `.env`
+
+Copy `.env.example` to `.env` and fill in the real values:
 
 ```env
 GOOGLE_GENAI_USE_VERTEXAI=TRUE
@@ -118,55 +98,207 @@ GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 GOOGLE_CLOUD_LOCATION=us-central1
 FIRESTORE_DATABASE=(default)
 GCS_BUCKET_NAME=your-gcs-bucket-name
-ADK_LIVE_MODEL=gemini-2.5-flash-live-001
+ADK_LIVE_MODEL=gemini-live-2.5-flash-native-audio
+LIVE_AGENT_VOICE=Aoede
+LIVE_AGENT_LANGUAGE_CODE=en-US
+SNAPSHOT_INTERVAL_MS=2500
 APP_NAME=gemini-live-agent-hack
 PORT=8080
 ```
 
-5. Run the Phase 0 backend shell:
+Important notes:
+
+- use `gemini-live-2.5-flash-native-audio` for Phase 1
+- the old `gemini-2.5-flash-live-001` value should not be used here
+- `GOOGLE_GENAI_USE_VERTEXAI` must stay `TRUE`
+
+### 6. Start The Backend
 
 ```bash
-uvicorn main:app --reload
+python -m uvicorn main:app --reload
 ```
 
-6. Verify runtime health:
+You should see:
+
+- startup completes successfully
+- the app validates Firestore and Cloud Storage
+- no live model error appears at startup
+
+### 7. Verify Basic Health
+
+In another terminal:
 
 ```bash
 curl http://127.0.0.1:8000/healthz
 ```
 
-## Teammate Bootstrap
-
-Any teammate should be able to run the Phase 0 and early Phase 1 stack by doing the following:
+Then optionally inspect config:
 
 ```bash
-git clone <repo-url>
-cd gemini-live-agent-hack
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-gcloud auth login
-gcloud auth application-default login
-gcloud config set project YOUR_PROJECT_ID
-gcloud auth application-default set-quota-project YOUR_PROJECT_ID
-cp .env.example .env
-# Fill in GOOGLE_CLOUD_PROJECT and GCS_BUCKET_NAME
-uvicorn main:app --reload
+curl http://127.0.0.1:8000/config
 ```
 
-For agent-only iteration, teammates can also run:
+### 8. Open The Demo
 
-```bash
-adk web
+Open:
+
+```txt
+http://127.0.0.1:8000/demo
 ```
 
-The backend shell and the ADK dev UI serve different purposes:
-- `uvicorn main:app --reload` is the Google Cloud-native app shell we will extend in later phases.
-- `adk web` is useful for quick agent prompt/tool iteration.
+### 9. Run The Demo Flow
+
+1. Click `Start Live Demo`
+2. Wait for the agent intro
+3. Enable the mic
+4. Speak and pause briefly
+5. Enable the camera to send room snapshots
+6. Let the agent guide the room scan
+7. Use `Interrupt` to stop the agent mid-response
+
+### 10. Quick Validation Checklist
+
+Confirm the following:
+
+- the page loads
+- the WebSocket connects
+- the agent intro appears
+- the mic transcript updates
+- the agent responds in voice
+- camera snapshots increment in the UI
+- interruptions stop playback quickly
+- Firestore receives `live_sessions/{session_id}`
+- GCS receives snapshot files
+
+## Demo Flow
+
+1. `Start Live Demo` creates the live session and opens the WebSocket.
+2. The backend primes the first agent turn so the decorator introduces itself and asks for a useful room angle.
+3. The mic streams 16 kHz PCM audio.
+4. The camera sends periodic JPEG snapshots.
+5. The agent answers in voice-first fashion and the transcript panel shows text updates.
+6. Interruptions can happen by button press or natural barge-in.
+
+## Environment Variables
+
+```env
+GOOGLE_GENAI_USE_VERTEXAI=TRUE
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_CLOUD_LOCATION=us-central1
+FIRESTORE_DATABASE=(default)
+GCS_BUCKET_NAME=your-gcs-bucket-name
+ADK_LIVE_MODEL=gemini-live-2.5-flash-native-audio
+LIVE_AGENT_VOICE=Aoede
+LIVE_AGENT_LANGUAGE_CODE=en-US
+SNAPSHOT_INTERVAL_MS=2500
+APP_NAME=gemini-live-agent-hack
+PORT=8080
+```
+
+## Key Files
+
+- `main.py`
+  - FastAPI entrypoint
+  - `/demo`
+  - `/healthz`
+  - `POST /api/live/session`
+  - `WS /api/live/ws/{session_id}`
+
+- `services/live_runtime.py`
+  - ADK `Runner`
+  - `LiveRequestQueue`
+  - Phase 1 live run config
+  - event forwarding
+  - live intro primer
+
+- `agents/agent.py`
+  - single live decorator `LlmAgent`
+
+- `agents/instructions.md`
+  - decorator persona
+  - room-scan guidance
+  - observation rules
+
+- `services/firestore_store.py`
+  - live session metadata
+  - event logging
+
+- `services/storage_store.py`
+  - snapshot persistence
+
+- `static/demo.html`
+  - demo UI shell
+
+- `static/demo.js`
+  - live client behavior
+  - mic capture
+  - playback
+  - transcript handling
+  - interrupt behavior
+  - browser fallbacks
+
+- `static/audio-recorder-worklet.js`
+  - 16 kHz PCM capture
+
+- `static/audio-player-worklet.js`
+  - 24 kHz PCM playback
+
+## Validation Checklist
+
+- `GET /healthz` returns 200
+- `POST /api/live/session` returns session metadata
+- the live WebSocket connects
+- the agent intro is generated
+- mic turns can be spoken, not just typed
+- the agent answers in voice
+- the transcript panel updates
+- room snapshots save successfully
+- the agent can comment on visible room features
+- interruptions feel natural
+
+## Common Issues
+
+### Old Model ID
+
+Use:
+
+```env
+ADK_LIVE_MODEL=gemini-live-2.5-flash-native-audio
+```
+
+Do not use the older `gemini-2.5-flash-live-001` value in this Phase 1 setup.
+
+### PowerShell Activation Issues
+
+Use:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+venv\Scripts\Activate.ps1
+```
+
+### `pip.exe` Blocked By Policy
+
+Try:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### Agent Hears Its Own Audio
+
+The client includes:
+
+- echo cancellation
+- noise suppression
+- auto gain control
+- self-listening protection during agent playback
+
+If demo conditions are noisy, headphones are still the safest option.
 
 ## Cloud Run
 
-Once the runtime service account, Firestore database, and GCS bucket exist, the repo can be deployed with source-based Cloud Run deploys:
+Once the runtime service account, Firestore database, and GCS bucket exist, deploy with:
 
 ```bash
 gcloud run deploy gemini-live-agent-hack \
@@ -175,3 +307,8 @@ gcloud run deploy gemini-live-agent-hack \
   --allow-unauthenticated \
   --service-account YOUR_RUNTIME_SERVICE_ACCOUNT
 ```
+
+## Where To Read More
+
+- teammate setup and daily usage: this `README.md`
+- full Phase 1 implementation notes: [PHASE1.md](./PHASE1.md)

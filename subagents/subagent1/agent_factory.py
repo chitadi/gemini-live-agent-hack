@@ -5,7 +5,7 @@ from typing import Optional
 from google.adk.agents import LlmAgent
 
 LIVE_MODEL_ENV_VAR = "ADK_LIVE_MODEL"
-DEFAULT_LIVE_MODEL = "gemini-2.5-flash-live-001"
+DEFAULT_LIVE_MODEL = "gemini-live-2.5-flash-native-audio"
 
 
 
