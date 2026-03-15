@@ -56,7 +56,8 @@ body {
 .shell {
   position: relative;
   z-index: 1;
-  width: min(1200px, calc(100vw - 2rem));
+  width: calc(100vw - 2rem);
+  max-width: 1600px;
   margin: 0 auto;
   padding: 1.2rem 0 2.5rem;
 }
@@ -70,7 +71,7 @@ body {
 }
 
 .hero {
-  padding: 1.8rem 1.8rem 1.5rem;
+  padding: 1.4rem 1.8rem 1.25rem;
   animation: rise 500ms ease-out;
 }
 
@@ -83,24 +84,21 @@ body {
   text-transform: uppercase;
 }
 
-.hero h1,
 .panel-header h2 {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   line-height: 1;
 }
 
-.hero h1 {
-  font-size: clamp(2.6rem, 5vw, 4.6rem);
-  max-width: 9ch;
-}
-
-.hero-copy {
-  max-width: 52rem;
-  margin: 1rem 0 1.2rem;
-  color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.6;
+.hero-line {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.9rem;
+  font-family: "Trebuchet MS", "Gill Sans", "Segoe UI", sans-serif;
+  font-size: clamp(2rem, 2vw, 2rem);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .hero-meta,
@@ -202,13 +200,23 @@ button:disabled {
   gap: 1rem;
   grid-template-columns: 1.1fr 0.9fr;
   margin-top: 1rem;
+  align-items: start;
 }
 
 .camera-panel,
 .transcript-panel {
-  min-height: 35rem;
   padding: 1rem;
   animation: rise 820ms ease-out;
+}
+
+.camera-panel {
+  min-height: 35rem;
+}
+
+.transcript-panel {
+  display: flex;
+  flex-direction: column;
+  height: clamp(28rem, 56vh, 35rem);
 }
 
 .inspiration-panel {
@@ -265,9 +273,11 @@ video {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  height: calc(100% - 4.25rem);
-  overflow: auto;
-  padding-right: 0.15rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.35rem;
 }
 
 .bubble {
@@ -482,9 +492,12 @@ video {
     grid-template-columns: 1fr;
   }
 
-  .camera-panel,
   .transcript-panel {
-    min-height: auto;
+    height: min(28rem, 55vh);
+  }
+
+  .hero-line {
+    white-space: normal;
   }
 
   .video-shell {
@@ -513,6 +526,10 @@ video {
   .camera-panel,
   .transcript-panel {
     padding: 0.9rem;
+  }
+
+  .transcript-panel {
+    height: min(24rem, 52vh);
   }
 
   .video-shell {

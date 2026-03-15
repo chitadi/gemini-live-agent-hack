@@ -2,7 +2,6 @@ const elements = {
   startButton: document.getElementById("startButton"),
   micButton: document.getElementById("micButton"),
   cameraButton: document.getElementById("cameraButton"),
-  interruptButton: document.getElementById("interruptButton"),
   endTurnButton: document.getElementById("endTurnButton"),
   textForm: document.getElementById("textForm"),
   textInput: document.getElementById("textInput"),
@@ -693,7 +692,6 @@ function updateSnapshotCount() {
 function setControlsEnabled(enabled) {
   elements.micButton.disabled = !enabled;
   elements.cameraButton.disabled = !enabled;
-  elements.interruptButton.disabled = !enabled;
   elements.endTurnButton.disabled = true;
   elements.textInput.disabled = !enabled;
   elements.sendTextButton.disabled = !enabled;
@@ -1128,15 +1126,6 @@ async function captureSnapshot() {
   });
 }
 
-function interruptAgent() {
-  clearAgentAudio();
-  appendBubble(
-    "system",
-    "Local playback cleared. Start speaking to barge in with server-side turn detection."
-  );
-  setStatus("Interrupt", "Speak to barge in.");
-}
-
 function sendTextMessage(text) {
   const cleaned = text.trim();
   if (!cleaned) {
@@ -1178,8 +1167,6 @@ function bindEvents() {
       setStatus("Camera error");
     }
   });
-
-  elements.interruptButton.addEventListener("click", interruptAgent);
 
   elements.endTurnButton.addEventListener("click", async () => {
     setStatus("Auto turn detection", "Turns close automatically in the live model.");
