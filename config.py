@@ -32,6 +32,9 @@ class Settings:
     firestore_database: str
     gcs_bucket_name: str
     adk_live_model: str
+    live_agent_voice: str
+    live_agent_language_code: str
+    snapshot_interval_ms: int
     port: int
 
     def public_dict(self) -> dict[str, object]:
@@ -43,6 +46,9 @@ class Settings:
             "firestore_database": self.firestore_database,
             "gcs_bucket_name": self.gcs_bucket_name,
             "adk_live_model": self.adk_live_model,
+            "live_agent_voice": self.live_agent_voice,
+            "live_agent_language_code": self.live_agent_language_code,
+            "snapshot_interval_ms": self.snapshot_interval_ms,
             "port": self.port,
         }
 
@@ -56,13 +62,18 @@ def get_settings() -> Settings:
         google_cloud_location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
         firestore_database=os.getenv("FIRESTORE_DATABASE", "(default)"),
         gcs_bucket_name=_read_required("GCS_BUCKET_NAME"),
-        adk_live_model=os.getenv("ADK_LIVE_MODEL", "gemini-2.5-flash-live-001"),
+        adk_live_model=os.getenv(
+            "ADK_LIVE_MODEL", "gemini-live-2.5-flash-native-audio"
+        ),
+        live_agent_voice=os.getenv("LIVE_AGENT_VOICE", "Aoede"),
+        live_agent_language_code=os.getenv("LIVE_AGENT_LANGUAGE_CODE", "en-US"),
+        snapshot_interval_ms=int(os.getenv("SNAPSHOT_INTERVAL_MS", "2500")),
         port=int(os.getenv("PORT", "8080")),
     )
 
     if not settings.google_genai_use_vertexai:
         raise ValueError(
-            "Phase 0 is Vertex-first. Set GOOGLE_GENAI_USE_VERTEXAI=TRUE."
+            "This live runtime is Vertex-first. Set GOOGLE_GENAI_USE_VERTEXAI=TRUE."
         )
 
     return settings

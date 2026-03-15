@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Live Decorator Demo</title>
+    <link rel="stylesheet" href="/static/demo.css" />
+  </head>
+  <body>
+    <div class="bg-orb bg-orb-left"></div>
+    <div class="bg-orb bg-orb-right"></div>
+
+    <main class="shell">
+      <section class="hero card">
+        <p class="eyebrow">Phase 1 Live Multimodal Shell</p>
+        <h1>Talk to your room decorator.</h1>
+        <p class="hero-copy">
+          Voice-first scan guidance, spoken answers, periodic room snapshots,
+          and clean interruption handling in one browser demo.
+        </p>
+        <div class="hero-meta">
+          <span class="pill" id="sessionBadge">Session: not started</span>
+          <span class="pill accent" id="statusBadge">Idle</span>
+          <span class="pill" id="snapshotBadge">Snapshots: 0</span>
+        </div>
+      </section>
+
+      <section class="controls card">
+        <div class="controls-top">
+          <button id="startButton" class="primary">Start Live Demo</button>
+          <button id="micButton" class="secondary" disabled>Enable Mic</button>
+          <button id="cameraButton" class="secondary" disabled>Enable Camera</button>
+          <button id="interruptButton" class="ghost" disabled>Interrupt</button>
+        </div>
+        <div class="controls-bottom">
+          <button id="endTurnButton" class="ghost" disabled>Finish Turn</button>
+          <form id="textForm" class="text-form">
+            <input
+              id="textInput"
+              type="text"
+              placeholder="Type a fallback message or scan request..."
+              autocomplete="off"
+              disabled
+            />
+            <button type="submit" class="secondary" id="sendTextButton" disabled>
+              Send
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section class="layout">
+        <section class="camera-panel card">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Room Preview</p>
+              <h2>Camera snapshots feed the live agent</h2>
+            </div>
+            <p class="panel-status" id="cameraStatus">Camera off</p>
+          </div>
+          <div class="video-shell">
+            <video id="cameraPreview" autoplay playsinline muted></video>
+            <div class="video-overlay">
+              <span id="snapshotIntervalLabel">Snapshot cadence: waiting</span>
+            </div>
+          </div>
+          <canvas id="snapshotCanvas" hidden></canvas>
+        </section>
+
+        <section class="transcript-panel card">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Transcript</p>
+              <h2>Short voice turns with interruption-friendly pacing</h2>
+            </div>
+            <p class="panel-status" id="connectionStatus">Disconnected</p>
+          </div>
+          <div id="transcriptList" class="transcript-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/static/demo.js"></script>
+  </body>
+</html>
