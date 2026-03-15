@@ -410,6 +410,23 @@ class LiveRuntimeManager:
             voice_config=voice_config,
             language_code=settings.live_agent_language_code,
         )
+        realtime_input_config = genai_types.RealtimeInputConfig(
+            automatic_activity_detection=genai_types.AutomaticActivityDetection(
+                disabled=False,
+                start_of_speech_sensitivity=(
+                    genai_types.StartSensitivity.START_SENSITIVITY_LOW
+                ),
+                end_of_speech_sensitivity=(
+                    genai_types.EndSensitivity.END_SENSITIVITY_LOW
+                ),
+                prefix_padding_ms=100,
+                silence_duration_ms=800,
+            ),
+            activity_handling=(
+                genai_types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS
+            ),
+            turn_coverage=genai_types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
+        )
         return RunConfig(
             response_modalities=[
                 genai_types.Modality.AUDIO,
@@ -417,6 +434,7 @@ class LiveRuntimeManager:
             speech_config=speech_config,
             input_audio_transcription=genai_types.AudioTranscriptionConfig(),
             output_audio_transcription=genai_types.AudioTranscriptionConfig(),
+            realtime_input_config=realtime_input_config,
             tool_thread_pool_config=ToolThreadPoolConfig(max_workers=4),
         )
 

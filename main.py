@@ -143,7 +143,6 @@ async def live_ws(websocket: WebSocket, session_id: str) -> None:
             session_id=session_id,
         )
     )
-    user_audio_active = False
     final_status = "completed"
 
     try:
@@ -186,9 +185,6 @@ async def live_ws(websocket: WebSocket, session_id: str) -> None:
                         }
                     )
                     continue
-                if not user_audio_active:
-                    live_request_queue.send_activity_start()
-                    user_audio_active = True
                 live_request_queue.send_realtime(
                     genai_types.Blob(
                         data=audio_bytes,
@@ -230,30 +226,30 @@ async def live_ws(websocket: WebSocket, session_id: str) -> None:
                 continue
 
             if message_type == "interrupt":
-                live_request_queue.send_activity_start()
-                live_request_queue.send_activity_end()
-                user_audio_active = False
                 await manager.record_interrupt(
                     session_id=session_id, source="client_button"
                 )
                 await websocket.send_json(
                     {
                         "type": "status",
-                        "state": "interrupt_sent",
-                        "detail": "Interrupt signal sent to the live agent.",
+                        "state": "interrupt_hint",
+                        "detail": (
+                            "Server-side turn detection is active. "
+                            "Start speaking to barge in naturally."
+                        ),
                     }
                 )
                 continue
 
             if message_type == "end_turn":
-                if user_audio_active:
-                    live_request_queue.send_activity_end()
-                    user_audio_active = False
                 await websocket.send_json(
                     {
                         "type": "status",
-                        "state": "turn_closed",
-                        "detail": "User turn closed.",
+                        "state": "turn_detection_auto",
+                        "detail": (
+                            "Turn detection is handled automatically by the "
+                            "live model."
+                        ),
                     }
                 )
                 continue
@@ -281,8 +277,6 @@ async def live_ws(websocket: WebSocket, session_id: str) -> None:
         except Exception:
             pass
     finally:
-        if user_audio_active:
-            live_request_queue.send_activity_end()
         live_request_queue.close()
         forward_task.cancel()
         try:

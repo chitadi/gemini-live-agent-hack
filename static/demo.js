@@ -98,12 +98,14 @@ function setAgentSpeaking(active) {
   state.agentSpeaking = active;
 
   if (active) {
-    stopSpeechRecognition();
+    // Browser speech recognition fallback is intentionally disabled so
+    // ADK/Vertex owns turn detection and transcription during the live demo.
+    // stopSpeechRecognition();
     return;
   }
 
   if (state.micEnabled && !state.userAudioOpen) {
-    startSpeechRecognition();
+    // startSpeechRecognition();
   }
 }
 
@@ -154,6 +156,7 @@ function resetBrowserTurnState() {
   state.lastCommittedUserText = "";
 }
 
+// Browser speech recognition fallback is retained for reference, but disabled.
 function maybeFinalizeUserTranscript(text) {
   const cleaned = text.trim();
   if (!cleaned) {
@@ -351,7 +354,7 @@ function setControlsEnabled(enabled) {
   elements.micButton.disabled = !enabled;
   elements.cameraButton.disabled = !enabled;
   elements.interruptButton.disabled = !enabled;
-  elements.endTurnButton.disabled = !enabled;
+  elements.endTurnButton.disabled = true;
   elements.textInput.disabled = !enabled;
   elements.sendTextButton.disabled = !enabled;
 }
@@ -469,18 +472,6 @@ async function ensureRecorder() {
 
     if (isSpeaking) {
       clearSilenceTimer();
-    } else if (state.userAudioOpen && !state.silenceTimerId) {
-      state.silenceTimerId = window.setTimeout(() => {
-        if (!state.micEnabled) {
-          return;
-        }
-        sendJson({ type: "end_turn" });
-        state.userAudioOpen = false;
-        state.silenceTimerId = null;
-        if (!maybeSendBrowserTranscriptFallback()) {
-          setStatus("Thinking");
-        }
-      }, 900);
     }
 
     sendJson({
@@ -569,6 +560,7 @@ function connectWebSocket() {
 
     if (message.type === "audio") {
       await ensurePlayer();
+      state.userAudioOpen = false;
       state.currentTurnHasServerAudio = true;
       setAgentSpeaking(true);
       stopAgentSpeechFallback();
@@ -614,7 +606,7 @@ function connectWebSocket() {
       state.userAudioOpen = false;
       resetBrowserTurnState();
       clearSilenceTimer();
-      stopSpeechRecognition();
+      // stopSpeechRecognition();
       elements.micButton.textContent = "Enable Mic";
       if (state.recorderContext && state.recorderContext.state === "running") {
         state.recorderContext.suspend();
@@ -636,18 +628,19 @@ function handleStatusMessage(message) {
     setStatus("Snapshot saved", detail);
   } else if (message.state === "user_transcript") {
     state.serverHeardUserThisTurn = true;
+    state.userAudioOpen = false;
     maybeFinalizeUserTranscript(detail);
     setStatus("Thinking");
   } else if (message.state === "listening") {
     state.serverHeardUserThisTurn = true;
     upsertCurrentUserBubble(detail);
     setStatus("Listening", detail);
-  } else if (message.state === "interrupt_sent") {
+  } else if (message.state === "interrupt_hint") {
     stopAgentSpeechFallback();
     setAgentSpeaking(false);
-    setStatus("Interrupt sent");
-  } else if (message.state === "turn_closed") {
-    setStatus("Turn closed");
+    setStatus("Interrupt", detail);
+  } else if (message.state === "turn_detection_auto") {
+    setStatus("Auto turn detection", detail);
   } else if (message.state === "error") {
     appendBubble("system", `Error: ${detail}`);
     setStatus("Error", detail);
@@ -678,20 +671,20 @@ async function toggleMicrophone() {
   state.userAudioOpen = false;
   resetBrowserTurnState();
   if (!state.agentSpeaking) {
-    startSpeechRecognition();
+    // startSpeechRecognition();
   }
   elements.micButton.textContent = "Disable Mic";
   setStatus(
     "Mic live",
-    `Speak, then pause briefly so the turn can send. Input ${state.recorderContext.sampleRate} Hz -> 16000 Hz PCM.`
+    `Speak naturally. ADK turn detection is active. Input ${state.recorderContext.sampleRate} Hz -> 16000 Hz PCM.`
   );
 }
 
 async function disableMicrophone() {
   state.micEnabled = false;
   state.userAudioOpen = false;
-  maybeSendBrowserTranscriptFallback();
-  stopSpeechRecognition();
+  // maybeSendBrowserTranscriptFallback();
+  // stopSpeechRecognition();
   stopAgentSpeechFallback();
   resetBrowserTurnState();
   clearSilenceTimer();
@@ -699,7 +692,6 @@ async function disableMicrophone() {
   if (state.recorderContext && state.recorderContext.state === "running") {
     await state.recorderContext.suspend();
   }
-  sendJson({ type: "end_turn" });
   setStatus("Mic off");
 }
 
@@ -794,7 +786,11 @@ async function captureSnapshot() {
 
 function interruptAgent() {
   clearAgentAudio();
-  sendJson({ type: "interrupt" });
+  appendBubble(
+    "system",
+    "Local playback cleared. Start speaking to barge in with server-side turn detection."
+  );
+  setStatus("Interrupt", "Speak to barge in.");
 }
 
 function sendTextMessage(text) {
@@ -842,11 +838,7 @@ function bindEvents() {
   elements.interruptButton.addEventListener("click", interruptAgent);
 
   elements.endTurnButton.addEventListener("click", async () => {
-    if (state.micEnabled) {
-      await disableMicrophone();
-      return;
-    }
-    sendJson({ type: "end_turn" });
+    setStatus("Auto turn detection", "Turns close automatically in the live model.");
   });
 
   elements.textForm.addEventListener("submit", (event) => {
