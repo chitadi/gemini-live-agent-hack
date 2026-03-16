@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 from time import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Coroutine
 from uuid import uuid4
 
 from fastapi import WebSocket
@@ -26,7 +26,12 @@ from services.storage_store import get_storage_store
 logger = logging.getLogger(__name__)
 
 DEMO_USER_ID = "demo-user"
-_DEDUPABLE_WEBSOCKET_MESSAGE_TYPES = {"status", "agent_text", "turn_state"}
+_DEDUPABLE_WEBSOCKET_MESSAGE_TYPES = {
+    "status",
+    "agent_text",
+    "turn_state",
+    "agent_note",
+}
 
 
 def _summarize_websocket_payload(payload: dict[str, object]) -> dict[str, object]:
@@ -106,6 +111,8 @@ class LiveSessionMetadata:
     snapshot_interval_ms: int
     latest_snapshot_path: str | None = None
     latest_snapshot_timestamp_ms: int | None = None
+    primary_reference_snapshot_path: str | None = None
+    primary_reference_snapshot_timestamp_ms: int | None = None
     snapshot_count: int = 0
     flow_state: str = "room"
     awaiting_generation_confirmation: bool = False
@@ -127,6 +134,8 @@ class LiveSessionMetadata:
     latest_agent_transcript: str | None = None
     last_websocket_payload_fingerprints: dict[str, str] = field(default_factory=dict)
     primer_sent: bool = False
+    active_websocket: WebSocket | None = None
+    active_event_loop: asyncio.AbstractEventLoop | None = None
 
 
 class LiveRuntimeManager:
@@ -227,6 +236,12 @@ class LiveRuntimeManager:
             "latest_snapshot_timestamp_ms": _read_optional_int(
                 persisted_session.get("latest_snapshot_timestamp_ms")
             ),
+            "primary_reference_snapshot_path": _read_optional_text(
+                persisted_session.get("primary_reference_snapshot_path")
+            ),
+            "primary_reference_snapshot_timestamp_ms": _read_optional_int(
+                persisted_session.get("primary_reference_snapshot_timestamp_ms")
+            ),
             "latest_snapshot_available": latest_snapshot_path is not None,
             "snapshot_count": _read_nonnegative_int(
                 persisted_session.get("snapshot_count")
@@ -288,6 +303,10 @@ class LiveRuntimeManager:
             "snapshot_interval_ms": metadata.snapshot_interval_ms,
             "latest_snapshot_path": metadata.latest_snapshot_path,
             "latest_snapshot_timestamp_ms": metadata.latest_snapshot_timestamp_ms,
+            "primary_reference_snapshot_path": metadata.primary_reference_snapshot_path,
+            "primary_reference_snapshot_timestamp_ms": (
+                metadata.primary_reference_snapshot_timestamp_ms
+            ),
             "latest_snapshot_available": metadata.latest_snapshot_path is not None,
             "snapshot_count": metadata.snapshot_count,
             "flow_state": metadata.flow_state,
@@ -335,6 +354,12 @@ class LiveRuntimeManager:
         )
         metadata.latest_snapshot_timestamp_ms = _read_optional_int(
             persisted_session.get("latest_snapshot_timestamp_ms")
+        )
+        metadata.primary_reference_snapshot_path = _read_optional_text(
+            persisted_session.get("primary_reference_snapshot_path")
+        )
+        metadata.primary_reference_snapshot_timestamp_ms = _read_optional_int(
+            persisted_session.get("primary_reference_snapshot_timestamp_ms")
         )
         metadata.snapshot_count = _read_nonnegative_int(
             persisted_session.get("snapshot_count"),
@@ -505,6 +530,82 @@ class LiveRuntimeManager:
         )
         return live_events, live_request_queue
 
+    def attach_websocket(
+        self,
+        *,
+        session_id: str,
+        websocket: WebSocket,
+        event_loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        metadata = self._require_session(session_id)
+        metadata.active_websocket = websocket
+        metadata.active_event_loop = event_loop
+
+    def detach_websocket(self, *, session_id: str, websocket: WebSocket) -> None:
+        metadata = self._require_session(session_id)
+        if metadata.active_websocket is websocket:
+            metadata.active_websocket = None
+            metadata.active_event_loop = None
+
+    async def emit_session_context(self, *, session_id: str) -> None:
+        metadata = self._require_session(session_id)
+        websocket = metadata.active_websocket
+        if websocket is None:
+            return
+
+        await _send_ws_json(
+            websocket=websocket,
+            session_id=session_id,
+            dedupe_cache=metadata.last_websocket_payload_fingerprints,
+            payload={
+                "type": "session_context",
+                "session": self.get_session_context(session_id),
+            },
+        )
+
+    def emit_session_context_sync(self, *, session_id: str) -> None:
+        self._schedule_ws_emit(
+            session_id=session_id,
+            coroutine=self.emit_session_context(session_id=session_id),
+        )
+
+    async def emit_agent_note(self, *, session_id: str, text: str) -> None:
+        cleaned = text.strip()
+        if not cleaned:
+            return
+
+        metadata = self._require_session(session_id)
+        websocket = metadata.active_websocket
+        if websocket is None:
+            return
+
+        await _send_ws_json(
+            websocket=websocket,
+            session_id=session_id,
+            dedupe_cache=metadata.last_websocket_payload_fingerprints,
+            payload={"type": "agent_note", "text": cleaned},
+        )
+
+    def emit_agent_note_sync(self, *, session_id: str, text: str) -> None:
+        self._schedule_ws_emit(
+            session_id=session_id,
+            coroutine=self.emit_agent_note(session_id=session_id, text=text),
+        )
+
+    def _schedule_ws_emit(
+        self,
+        *,
+        session_id: str,
+        coroutine: Coroutine[object, object, object],
+    ) -> None:
+        metadata = self._require_session(session_id)
+        websocket = metadata.active_websocket
+        event_loop = metadata.active_event_loop
+        if websocket is None or event_loop is None or event_loop.is_closed():
+            coroutine.close()
+            return
+        asyncio.run_coroutine_threadsafe(coroutine, event_loop)
+
     async def forward_events_to_websocket(
         self,
         *,
@@ -613,6 +714,7 @@ class LiveRuntimeManager:
         session_id: str,
         image_bytes: bytes,
         timestamp_ms: int,
+        is_primary_reference: bool = False,
     ) -> dict[str, object]:
         metadata = self._require_session(session_id)
         snapshot_details = await asyncio.to_thread(
@@ -623,6 +725,12 @@ class LiveRuntimeManager:
         )
         metadata.latest_snapshot_path = str(snapshot_details["object_path"])
         metadata.latest_snapshot_timestamp_ms = timestamp_ms
+        if (
+            is_primary_reference
+            or metadata.primary_reference_snapshot_path is None
+        ):
+            metadata.primary_reference_snapshot_path = metadata.latest_snapshot_path
+            metadata.primary_reference_snapshot_timestamp_ms = timestamp_ms
         metadata.snapshot_count += 1
 
         await asyncio.to_thread(
@@ -630,6 +738,10 @@ class LiveRuntimeManager:
             session_id,
             latest_snapshot_path=metadata.latest_snapshot_path,
             latest_snapshot_timestamp_ms=timestamp_ms,
+            primary_reference_snapshot_path=metadata.primary_reference_snapshot_path,
+            primary_reference_snapshot_timestamp_ms=(
+                metadata.primary_reference_snapshot_timestamp_ms
+            ),
             snapshot_count=metadata.snapshot_count,
         )
         await asyncio.to_thread(
@@ -640,6 +752,10 @@ class LiveRuntimeManager:
                 "object_path": metadata.latest_snapshot_path,
                 "timestamp_ms": timestamp_ms,
                 "snapshot_count": metadata.snapshot_count,
+                "is_primary_reference": (
+                    metadata.primary_reference_snapshot_path
+                    == metadata.latest_snapshot_path
+                ),
             },
         )
         return snapshot_details
@@ -745,6 +861,14 @@ class LiveRuntimeManager:
             latest_tool_status=status,
             latest_tool_detail=detail,
         )
+        note = _tool_activity_agent_note(
+            tool_name=tool_name,
+            status=status,
+            detail=detail,
+        )
+        if note:
+            self.emit_agent_note_sync(session_id=session_id, text=note)
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def set_flow_state(self, *, session_id: str, flow_state: str) -> dict[str, object]:
@@ -763,6 +887,7 @@ class LiveRuntimeManager:
             session_id,
             flow_state=cleaned_state,
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def set_generation_confirmation(
@@ -796,6 +921,7 @@ class LiveRuntimeManager:
             generation_feedback=metadata.generation_feedback,
             awaiting_generation_confirmation=metadata.awaiting_generation_confirmation,
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def save_room_memory(
@@ -819,6 +945,7 @@ class LiveRuntimeManager:
             session_id,
             room_memory=cleaned_memory,
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def save_vibe_memory(
@@ -842,6 +969,7 @@ class LiveRuntimeManager:
             session_id,
             vibe_memory=cleaned_memory,
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def save_inspiration_search_plan(
@@ -876,6 +1004,7 @@ class LiveRuntimeManager:
             latest_design_brief=cleaned_query,
             latest_inspiration_search_queries=list(cleaned_queries),
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def save_inspiration_image_results(
@@ -901,6 +1030,7 @@ class LiveRuntimeManager:
             session_id,
             latest_inspiration_image_results=image_results_by_query,
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def save_generated_render(
@@ -934,6 +1064,7 @@ class LiveRuntimeManager:
             latest_generated_render_path=metadata.latest_generated_render_path,
             latest_generated_render_mime_type=metadata.latest_generated_render_mime_type,
         )
+        self.emit_session_context_sync(session_id=session_id)
         return self.get_session_context(session_id)
 
     def _build_run_config(self) -> RunConfig:
@@ -983,28 +1114,35 @@ class LiveRuntimeManager:
         session_id: str,
         transcription: genai_types.Transcription,
     ) -> None:
+        metadata = self._require_session(session_id)
         if transcription.finished:
             await self.record_user_turn(
                 session_id=session_id,
                 text=transcription.text,
                 source="audio_transcription",
             )
-            await websocket.send_json(
-                {
+            await _send_ws_json(
+                websocket=websocket,
+                session_id=session_id,
+                dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                payload={
                     "type": "status",
                     "state": "user_transcript",
                     "detail": transcription.text,
-                }
+                },
             )
             return
 
         if transcription.text:
-            await websocket.send_json(
-                {
+            await _send_ws_json(
+                websocket=websocket,
+                session_id=session_id,
+                dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                payload={
                     "type": "status",
                     "state": "listening",
                     "detail": transcription.text,
-                }
+                },
             )
 
     async def _handle_output_transcription(
@@ -1015,9 +1153,13 @@ class LiveRuntimeManager:
         transcription: genai_types.Transcription,
         interrupted: bool,
     ) -> None:
+        metadata = self._require_session(session_id)
         if transcription.finished:
-            await websocket.send_json(
-                {"type": "agent_text", "text": transcription.text}
+            await _send_ws_json(
+                websocket=websocket,
+                session_id=session_id,
+                dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                payload={"type": "agent_text", "text": transcription.text},
             )
             await self.record_agent_turn(
                 session_id=session_id,
@@ -1027,8 +1169,11 @@ class LiveRuntimeManager:
             return
 
         if transcription.text:
-            await websocket.send_json(
-                {"type": "partial_text", "text": transcription.text}
+            await _send_ws_json(
+                websocket=websocket,
+                session_id=session_id,
+                dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                payload={"type": "partial_text", "text": transcription.text},
             )
 
     def _require_session(self, session_id: str) -> LiveSessionMetadata:
@@ -1085,3 +1230,18 @@ def _read_dict_list(value: object) -> list[dict[str, object]]:
         return []
 
     return [item for item in value if isinstance(item, dict)]
+
+
+def _tool_activity_agent_note(*, tool_name: str, status: str, detail: str) -> str | None:
+    cleaned_detail = detail.strip()
+    if status == "started":
+        if tool_name == "search_inspiration_images":
+            return "I’m pulling inspiration references now. Give me a second while I line up the strongest matches."
+        if tool_name == "generate_redesign_image":
+            return "I’m rendering the redesign now. I’m keeping the room layout anchored while I restyle the finishes."
+    if status == "succeeded":
+        if tool_name == "search_inspiration_images":
+            return "The inspiration board is populated. I’ve got a few solid directions ready."
+    if status == "failed" and cleaned_detail:
+        return f"I hit a snag: {cleaned_detail}"
+    return None

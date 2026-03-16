@@ -44,6 +44,8 @@ class FirestoreStore:
                 "updated_at": firestore.SERVER_TIMESTAMP,
                 "latest_snapshot_path": None,
                 "latest_snapshot_timestamp_ms": None,
+                "primary_reference_snapshot_path": None,
+                "primary_reference_snapshot_timestamp_ms": None,
                 "latest_generated_render_path": None,
                 "latest_generated_render_mime_type": None,
                 "flow_state": "room",

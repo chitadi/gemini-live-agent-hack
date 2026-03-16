@@ -36,6 +36,7 @@ def generate_redesign_from_session_state(
         }
 
     runtime = get_live_runtime_manager()
+    session_context = runtime.get_session_context(session_id)
     runtime.record_tool_activity(
         session_id=session_id,
         tool_name=tool_name,
@@ -64,7 +65,12 @@ def generate_redesign_from_session_state(
         )
 
     try:
-        room_images = _load_room_images(session_id=session_id)
+        room_images = _load_room_images(
+            session_id=session_id,
+            primary_reference_snapshot_path=str(
+                session_context.get("primary_reference_snapshot_path", "") or ""
+            ).strip(),
+        )
     except Exception as exc:
         reason = str(exc).strip() or "Room snapshots could not be loaded for the generator."
         return _build_failure(
@@ -166,6 +172,13 @@ def generate_redesign_from_session_state(
         status="succeeded",
         detail="Generated and saved the first redesign render.",
     )
+    runtime.emit_agent_note_sync(
+        session_id=session_id,
+        text=_build_render_reveal_note(
+            design_brief=design_brief,
+            generator_text=str(generated.get("text") or "").strip(),
+        ),
+    )
 
     return {
         "saved": True,
@@ -203,21 +216,58 @@ def _build_failure(
     }
 
 
-def _load_room_images(*, session_id: str) -> list[ReferenceImage]:
+def _build_render_reveal_note(*, design_brief: str, generator_text: str) -> str:
+    cleaned_generator_text = " ".join(generator_text.split()).strip()
+    if cleaned_generator_text:
+        return (
+            "Here’s the concept I just rendered: "
+            f"{cleaned_generator_text}"
+        )
+
+    cleaned_brief = " ".join(design_brief.split()).strip()
+    if not cleaned_brief:
+        cleaned_brief = "a more polished, expressive take on your room"
+
+    return (
+        "The new render keeps your original view but reimagines it with "
+        f"{cleaned_brief}, so it should feel like the same room after a thoughtful styling pass."
+    )
+def _load_room_images(
+    *,
+    session_id: str,
+    primary_reference_snapshot_path: str,
+) -> list[ReferenceImage]:
     storage_store = get_storage_store()
     snapshots = storage_store.list_session_snapshots(
         session_id=session_id,
         limit=MAX_ROOM_REFERENCE_COUNT,
     )
-    room_images: list[ReferenceImage] = []
+    ordered_snapshots: list[dict[str, object]] = []
+    seen_paths: set[str] = set()
+
+    if primary_reference_snapshot_path:
+        ordered_snapshots.append({"object_path": primary_reference_snapshot_path})
+        seen_paths.add(primary_reference_snapshot_path)
+
     for snapshot in snapshots:
+        object_path = str(snapshot.get("object_path", "")).strip()
+        if not object_path or object_path in seen_paths:
+            continue
+        ordered_snapshots.append(snapshot)
+        seen_paths.add(object_path)
+        if len(ordered_snapshots) >= MAX_ROOM_REFERENCE_COUNT:
+            break
+
+    room_images: list[ReferenceImage] = []
+    for index, snapshot in enumerate(ordered_snapshots):
         object_path = str(snapshot.get("object_path", "")).strip()
         if not object_path:
             continue
         downloaded = storage_store.download_object(object_path)
+        label_prefix = "Primary room reference" if index == 0 else "Supporting room snapshot"
         room_images.append(
             ReferenceImage(
-                label=f"Room snapshot: {object_path.rsplit('/', 1)[-1]}",
+                label=f"{label_prefix}: {object_path.rsplit('/', 1)[-1]}",
                 data=bytes(downloaded["data"]),
                 mime_type=str(downloaded["content_type"] or "image/jpeg"),
             )

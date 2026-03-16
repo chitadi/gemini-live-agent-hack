@@ -143,20 +143,26 @@ class NanoBananaGeneratorService:
 
         contents: list[str | types.Part] = [
             (
-                "Create a single redesigned room image using the provided room snapshots as the base. "
-                "The room snapshots are the primary source; match the geometry, layout, and camera angle. "
-                "You may change materials, colors, and lighting, but do not alter the core room structure "
-                "unless the brief explicitly asks for structural changes. "
+                "Create a single redesigned room image by editing the provided primary room photo, not by inventing a new scene. "
+                "The first room image is the required template and composition anchor. Carefully analyze it before making changes. "
+                "Preserve that exact camera viewpoint, framing, perspective lines, room geometry, wall positions, window positions, "
+                "major furniture placement, and overall layout. The final image must look like the same original photo after a redesign, "
+                "as if the room was restyled in place and then photographed again from the exact same camera position. "
+                "Treat any additional room snapshots only as supporting references for details missing from the main template image. "
+                "Do not output a different room, a different camera angle, a wider or tighter crop, or a reimagined layout. "
+                "Do not remove or relocate major objects unless the brief explicitly asks for that change. "
+                "Make edits on top of the provided room photo: adjust finishes, colors, decor, textiles, lighting, and small furnishings "
+                "while keeping the original scene recognizable. "
                 "Use inspiration images only as targeted edit references for specific elements, not as the "
                 "source of the scene. Do not treat inspiration images as equally important to the room snapshots. "
                 "If an inspiration image clearly shows a specific item that also exists in the room "
                 "(e.g., bed, sofa, curtains, wall art), use it to redesign that item. Otherwise, ignore it. "
-                "Do not make a collage. Produce a cohesive, photorealistic final redesign.\n\n"
+                "Do not make a collage. Produce a cohesive, photorealistic final redesign that remains obviously based on the uploaded room photo.\n\n"
                 f"User brief: {cleaned_brief}\n"
                 f"Context for edits: {cleaned_context}\n"
                 f"Inspiration themes: {query_summary}"
             ),
-            "Room snapshots to preserve:",
+            "Room snapshots to preserve. The first one is the required template image and fixed composition anchor:",
         ]
 
         for room_image in room_images:

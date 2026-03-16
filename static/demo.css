@@ -172,10 +172,44 @@ button:disabled {
   color: var(--text);
 }
 
+.upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(91, 68, 50, 0.14);
+  cursor: pointer;
+}
+
 .ghost {
   background: transparent;
   border-color: rgba(91, 68, 50, 0.18);
   color: var(--muted);
+}
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 68, 50, 0.14);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.mode-button {
+  min-height: 2.4rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mode-button.is-active {
+  background: rgba(189, 93, 56, 0.14);
+  border-color: rgba(189, 93, 56, 0.24);
+  color: var(--accent-deep);
 }
 
 .text-form {
@@ -195,6 +229,13 @@ button:disabled {
   color: var(--text);
 }
 
+.input-mode-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
 .layout {
   display: grid;
   gap: 1rem;
@@ -203,10 +244,18 @@ button:disabled {
   align-items: start;
 }
 
+.layout.text-only {
+  grid-template-columns: 1fr;
+}
+
 .camera-panel,
 .transcript-panel {
   padding: 1rem;
   animation: rise 820ms ease-out;
+}
+
+.camera-panel.is-hidden {
+  display: none;
 }
 
 .camera-panel {
@@ -309,6 +358,21 @@ video {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.72rem;
+}
+
+.image-bubble img {
+  width: 100%;
+  display: block;
+  margin-top: 0.2rem;
+  border-radius: 16px;
+  border: 1px solid rgba(91, 68, 50, 0.12);
+  background: rgba(36, 28, 23, 0.08);
+  object-fit: cover;
+}
+
+.image-bubble span {
+  display: block;
+  margin-top: 0.65rem;
 }
 
 .inspiration-queries {
@@ -461,6 +525,14 @@ video {
   margin-top: 0.35rem;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.generated-render-copy .generated-render-version {
+  margin-top: 0;
+  color: var(--accent-deep);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 @keyframes rise {
