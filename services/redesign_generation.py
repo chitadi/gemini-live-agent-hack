@@ -22,6 +22,8 @@ def generate_redesign_from_session_state(
     design_brief = str(session_state.get("latest_design_brief", "")).strip()
     inspiration_queries = session_state.get("latest_inspiration_search_queries", [])
     inspiration_results = session_state.get("latest_inspiration_image_results", [])
+    room_memory = str(session_state.get("room_memory", "") or "").strip()
+    vibe_memory = str(session_state.get("vibe_memory", "") or "").strip()
 
     if not session_id:
         reason = "Live session ID was unavailable in tool context."
@@ -98,6 +100,11 @@ def generate_redesign_from_session_state(
             message="I need saved inspiration image matches before I can generate the redesign.",
         )
 
+    context_summary = _build_generation_context(
+        room_memory=room_memory,
+        vibe_memory=vibe_memory,
+        design_brief=design_brief,
+    )
     generator_service = get_nano_banana_generator_service()
     try:
         generated = generator_service.generate_redesign(
@@ -105,6 +112,7 @@ def generate_redesign_from_session_state(
             inspiration_queries=_normalize_queries(inspiration_queries),
             room_images=room_images,
             inspiration_images=inspiration_images,
+            context_summary=context_summary,
         )
     except Exception as exc:
         reason = str(exc).strip() or "Redesign image generation failed."
@@ -277,3 +285,19 @@ def _normalize_queries(raw_queries: object) -> list[str]:
     if not isinstance(raw_queries, list):
         return []
     return [str(query).strip() for query in raw_queries if str(query).strip()]
+
+
+def _build_generation_context(
+    *,
+    room_memory: str,
+    vibe_memory: str,
+    design_brief: str,
+) -> str:
+    sections: list[str] = []
+    if room_memory:
+        sections.append(f"Room memory: {room_memory}")
+    if vibe_memory:
+        sections.append(f"Vibe memory: {vibe_memory}")
+    if design_brief:
+        sections.append(f"Latest brief: {design_brief.strip()}")
+    return "\n".join(sections).strip()
