@@ -91,6 +91,7 @@ class NanoBananaGeneratorService:
         inspiration_queries: list[str],
         room_images: list[ReferenceImage],
         inspiration_images: list[ReferenceImage],
+        context_summary: str,
     ) -> dict[str, object]:
         if not room_images:
             raise ValueError("At least one room snapshot is required.")
@@ -105,6 +106,7 @@ class NanoBananaGeneratorService:
                 inspiration_queries=inspiration_queries,
                 room_images=room_images,
                 inspiration_images=inspiration_images,
+                context_summary=context_summary,
             ),
             config=types.GenerateContentConfig(
                 response_modalities=["TEXT", "IMAGE"],
@@ -127,22 +129,31 @@ class NanoBananaGeneratorService:
         inspiration_queries: list[str],
         room_images: list[ReferenceImage],
         inspiration_images: list[ReferenceImage],
+        context_summary: str,
     ) -> list[str | types.Part]:
         cleaned_brief = design_brief.strip()
         query_summary = ", ".join(query.strip() for query in inspiration_queries if query.strip())
+        cleaned_context = context_summary.strip()
         if not cleaned_brief:
             cleaned_brief = "Create a polished redesign that matches the saved inspiration."
         if not query_summary:
             query_summary = "Use the saved inspiration references only where they fit the room."
+        if not cleaned_context:
+            cleaned_context = "Use the saved room and vibe context to decide what to add or change."
 
         contents: list[str | types.Part] = [
             (
                 "Create a single redesigned room image using the provided room snapshots as the base. "
-                "Preserve the room geometry, architecture, major fixed elements, and camera perspective unless "
-                "the brief explicitly asks for a structural change. Use the inspiration images only as style "
-                "references for palette, materials, lighting mood, furniture direction, and decor language. "
+                "The room snapshots are the primary source; match the geometry, layout, and camera angle. "
+                "You may change materials, colors, and lighting, but do not alter the core room structure "
+                "unless the brief explicitly asks for structural changes. "
+                "Use inspiration images only as targeted edit references for specific elements, not as the "
+                "source of the scene. Do not treat inspiration images as equally important to the room snapshots. "
+                "If an inspiration image clearly shows a specific item that also exists in the room "
+                "(e.g., bed, sofa, curtains, wall art), use it to redesign that item. Otherwise, ignore it. "
                 "Do not make a collage. Produce a cohesive, photorealistic final redesign.\n\n"
                 f"User brief: {cleaned_brief}\n"
+                f"Context for edits: {cleaned_context}\n"
                 f"Inspiration themes: {query_summary}"
             ),
             "Room snapshots to preserve:",

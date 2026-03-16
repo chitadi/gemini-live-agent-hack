@@ -249,6 +249,10 @@ async def live_ws(websocket: WebSocket, session_id: str) -> None:
                         }
                     )
                     continue
+                session_context = manager.get_session_context(session_id)
+                flow_state = str(session_context.get("flow_state") or "room").strip()
+                if flow_state not in {"room", "vibe"}:
+                    continue
                 timestamp_ms = int(payload.get("timestamp_ms", 0) or 0)
                 snapshot_details = await manager.save_snapshot(
                     session_id=session_id,

@@ -882,7 +882,6 @@ function connectWebSocket() {
     const message = JSON.parse(event.data);
 
     if (message.type === "partial_text") {
-      appendBubble("agent", message.text, { append: true });
       setStatus("Responding");
       return;
     }
@@ -893,7 +892,9 @@ function connectWebSocket() {
       } else {
         appendBubble("agent", message.text);
       }
-      speakAgentFallback(message.text);
+      if (!state.currentTurnHasServerAudio) {
+        speakAgentFallback(message.text);
+      }
       return;
     }
 
