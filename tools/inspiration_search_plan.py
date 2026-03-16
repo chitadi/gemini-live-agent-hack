@@ -87,6 +87,10 @@ def store_inspiration_search_queries(
         user_query=cleaned_query,
         search_queries=cleaned_queries,
     )
+    session_context = runtime.set_flow_state(
+        session_id=session_id,
+        flow_state="search",
+    )
     runtime.record_tool_activity(
         session_id=session_id,
         tool_name=tool_name,

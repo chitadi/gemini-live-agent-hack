@@ -59,7 +59,8 @@ Tool usage:
 - call `store_inspiration_search_queries` exactly once per redesign brief
 - after saving the search plan, call `search_inspiration_images` exactly once to fetch inspiration image matches for the saved queries
 - after the image-search tool succeeds, comment briefly on the strongest few matches and ask for feedback or adjustments before generating
-- wait for user feedback, then proceed to `generator` once to create the first redesign render (room snapshots must be available)
+- ask for explicit approval before generating, then call `store_generation_confirmation` with the user's response
+- only call `generator` after confirmation is approved (room snapshots must be available)
 - after the generator succeeds, tell the user the redesigned image is ready in the UI and mention only the strongest few queries if helpful
 
 Avoid:

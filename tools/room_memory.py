@@ -39,6 +39,10 @@ def store_room_memory(room_memory: str, tool_context: ToolContext) -> dict[str, 
         session_id=session_id,
         room_memory=cleaned_memory,
     )
+    session_context = runtime.set_flow_state(
+        session_id=session_id,
+        flow_state="vibe",
+    )
     runtime.record_tool_activity(
         session_id=session_id,
         tool_name=tool_name,

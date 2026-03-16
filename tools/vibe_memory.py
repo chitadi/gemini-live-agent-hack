@@ -52,6 +52,10 @@ def store_vibe_memory(vibe_memory: str, tool_context: ToolContext) -> dict[str, 
         session_id=session_id,
         vibe_memory=cleaned_memory,
     )
+    session_context = runtime.set_flow_state(
+        session_id=session_id,
+        flow_state="vibe",
+    )
     runtime.record_tool_activity(
         session_id=session_id,
         tool_name=tool_name,

@@ -107,10 +107,18 @@ def search_inspiration_images(tool_context: ToolContext) -> dict[str, object]:
         }
 
     tool_context.state["latest_inspiration_image_results"] = image_results_by_query
+    tool_context.state["awaiting_generation_confirmation"] = True
+    tool_context.state["generation_confirmed"] = False
 
     session_context = runtime.save_inspiration_image_results(
         session_id=session_id,
         image_results_by_query=image_results_by_query,
+    )
+    session_context = runtime.set_generation_confirmation(
+        session_id=session_id,
+        confirmed=False,
+        feedback=None,
+        awaiting_confirmation=True,
     )
     runtime.record_tool_activity(
         session_id=session_id,
@@ -126,6 +134,36 @@ def search_inspiration_images(tool_context: ToolContext) -> dict[str, object]:
         "query_count": len(search_queries),
         "total_results": total_results,
         "results_per_query": results_per_query,
-        "image_results_by_query": image_results_by_query,
+        "summary": _build_result_summary(image_results_by_query),
         "session_context": session_context,
     }
+
+
+def _build_result_summary(
+    image_results_by_query: list[dict[str, object]],
+    *,
+    max_items: int = 4,
+) -> list[dict[str, str]]:
+    summary: list[dict[str, str]] = []
+    for group in image_results_by_query:
+        if not isinstance(group, dict):
+            continue
+        query = str(group.get("query") or "").strip()
+        results = group.get("results") or []
+        if not isinstance(results, list):
+            continue
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            title = str(result.get("title") or "").strip()
+            image_url = str(result.get("image_url") or result.get("thumbnail_url") or "")
+            summary.append(
+                {
+                    "query": query,
+                    "title": title or query or "Inspiration match",
+                    "image_url": image_url.strip(),
+                }
+            )
+            if len(summary) >= max_items:
+                return summary
+    return summary

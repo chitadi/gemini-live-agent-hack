@@ -24,6 +24,7 @@ def generate_redesign_from_session_state(
     inspiration_results = session_state.get("latest_inspiration_image_results", [])
     room_memory = str(session_state.get("room_memory", "") or "").strip()
     vibe_memory = str(session_state.get("vibe_memory", "") or "").strip()
+    generation_confirmed = bool(session_state.get("generation_confirmed", False))
 
     if not session_id:
         reason = "Live session ID was unavailable in tool context."
@@ -50,6 +51,16 @@ def generate_redesign_from_session_state(
             tool_name=tool_name,
             reason=reason,
             message="I need a saved redesign brief before I can generate the image.",
+        )
+
+    if not generation_confirmed:
+        reason = "User confirmation is required before generating the redesign."
+        return _build_failure(
+            runtime=runtime,
+            session_id=session_id,
+            tool_name=tool_name,
+            reason=reason,
+            message="I need your confirmation before I generate the redesign.",
         )
 
     try:
