@@ -1,40 +1,51 @@
-# gemini-live-agent-hack
+# Room Decorator Agent
 
-Phase 1 of a Google Cloud-native live multimodal room-decorator demo built with FastAPI, Google ADK, Vertex AI Live, Firestore, and Cloud Storage.
+Room Decorator Agent is a voice-first, multi-state live room decorator built with FastAPI, Google ADK, Vertex AI Live, Firestore, Vertex AI Search, and Cloud Storage. The agent guides a scan, captures room + vibe memories, finds inspiration, asks for confirmation, and generates a redesigned room render.
 
-If you want the full implementation story, architecture notes, design tradeoffs, prompt strategy, file map, and debugging notes for Phase 1, read [PHASE1.md](./PHASE1.md).
+## Summary
 
-## Phase 1 Summary
+Room Decorator Agent turns the project into a live decorator workflow:
 
-Phase 1 turns the project into a live decorator shell:
+- the user speaks instead of typing
+- the agent answers in voice-first fashion
+- the browser streams room snapshots during the scan
+- the agent captures room + vibe memories
+- inspiration search results are saved for review
+- the agent asks for confirmation before generation
+- the final redesign render appears in the UI
 
-- the user can speak instead of typing
-- the agent can answer in voice
-- the browser can show the room and send periodic snapshots
-- the agent can guide a room scan in a decorator persona
-- the user can interrupt the agent naturally
-
-## Phase 1 Architecture
+## Architecture
 
 ```mermaid
 flowchart TD
-    U[Browser Demo]
+    U[Browser Demo<br/>Mic + Camera]
     W[FastAPI WebSocket Gateway]
     A[ADK Live Agent]
-    F[Firestore]
-    S[Cloud Storage]
+    T1[Memory Tools<br/>room_memory + vibe_memory]
+    T2[Inspiration Search Tool]
+    T3[Generation Confirmation Tool]
+    V1[Vertex AI Live<br/>Realtime voice]
+    V2[Vertex AI Search<br/>Image retrieval]
+    V3[Vertex AI Image<br/>Nano Banana]
+    F[Firestore<br/>session state + search results]
+    S[Cloud Storage<br/>snapshots + renders]
 
-    U -->|text audio snapshots| W
+    U -->|audio + text + snapshots| W
     W -->|LiveRequestQueue| A
-    A -->|voice partial text turn events| W
-    W -->|streamed audio transcript status| U
-    W -->|session metadata| F
-    W -->|room snapshots| S
+    A -->|voice + text events| W
+    W -->|audio + transcripts + status| U
+    A --> T1 --> F
+    A --> T2 --> V2
+    V2 --> F
+    A --> T3 --> F
+    A --> V3
+    U -->|room snapshots| S
+    V3 --> S
 ```
 
 ## Bootstrapping
 
-This is the teammate-facing setup section for running Phase 1 locally from scratch.
+This is the teammate-facing setup section for running Room Decorator Agent locally from scratch.
 
 ### 1. Prerequisites
 
@@ -108,7 +119,7 @@ PORT=8080
 
 Important notes:
 
-- use `gemini-live-2.5-flash-native-audio` for Phase 1
+- use `gemini-live-2.5-flash-native-audio` for this setup
 - the old `gemini-2.5-flash-live-001` value should not be used here
 - `GOOGLE_GENAI_USE_VERTEXAI` must stay `TRUE`
 
@@ -146,39 +157,6 @@ Open:
 http://127.0.0.1:8000/demo
 ```
 
-### 9. Run The Demo Flow
-
-1. Click `Start Live Demo`
-2. Wait for the agent intro
-3. Enable the mic
-4. Speak and pause briefly
-5. Enable the camera to send room snapshots
-6. Let the agent guide the room scan
-7. Use `Interrupt` to stop the agent mid-response
-
-### 10. Quick Validation Checklist
-
-Confirm the following:
-
-- the page loads
-- the WebSocket connects
-- the agent intro appears
-- the mic transcript updates
-- the agent responds in voice
-- camera snapshots increment in the UI
-- interruptions stop playback quickly
-- Firestore receives `live_sessions/{session_id}`
-- GCS receives snapshot files
-
-## Demo Flow
-
-1. `Start Live Demo` creates the live session and opens the WebSocket.
-2. The backend primes the first agent turn so the decorator introduces itself and asks for a useful room angle.
-3. The mic streams 16 kHz PCM audio.
-4. The camera sends periodic JPEG snapshots.
-5. The agent answers in voice-first fashion and the transcript panel shows text updates.
-6. Interruptions can happen by button press or natural barge-in.
-
 ## Environment Variables
 
 ```env
@@ -190,6 +168,9 @@ GCS_BUCKET_NAME=your-gcs-bucket-name
 ADK_LIVE_MODEL=gemini-live-2.5-flash-native-audio
 LIVE_AGENT_VOICE=Aoede
 LIVE_AGENT_LANGUAGE_CODE=en-US
+VERTEX_AI_SEARCH_APP_ID=your-vertex-search-app-id
+VERTEX_AI_SEARCH_LOCATION=global
+INSPIRATION_IMAGE_RESULTS_PER_QUERY=3
 SNAPSHOT_INTERVAL_MS=2500
 APP_NAME=gemini-live-agent-hack
 PORT=8080
@@ -207,9 +188,10 @@ PORT=8080
 - `services/live_runtime.py`
   - ADK `Runner`
   - `LiveRequestQueue`
-  - Phase 1 live run config
+  - live run config
   - event forwarding
   - live intro primer
+  - session flow state and confirmation tracking
 
 - `agents/agent.py`
   - single live decorator `LlmAgent`
@@ -218,6 +200,7 @@ PORT=8080
   - decorator persona
   - room-scan guidance
   - observation rules
+  - memory + confirmation prompts
 
 - `services/firestore_store.py`
   - live session metadata
@@ -225,6 +208,15 @@ PORT=8080
 
 - `services/storage_store.py`
   - snapshot persistence
+
+- `tools/inspiration_search_plan.py`
+  - search plan + queries
+
+- `tools/inspiration_image_search.py`
+  - image search results + confirmation gating
+
+- `tools/generation_confirmation.py`
+  - user approval before generation
 
 - `static/demo.html`
   - demo UI shell
@@ -242,73 +234,3 @@ PORT=8080
 
 - `static/audio-player-worklet.js`
   - 24 kHz PCM playback
-
-## Validation Checklist
-
-- `GET /healthz` returns 200
-- `POST /api/live/session` returns session metadata
-- the live WebSocket connects
-- the agent intro is generated
-- mic turns can be spoken, not just typed
-- the agent answers in voice
-- the transcript panel updates
-- room snapshots save successfully
-- the agent can comment on visible room features
-- interruptions feel natural
-
-## Common Issues
-
-### Old Model ID
-
-Use:
-
-```env
-ADK_LIVE_MODEL=gemini-live-2.5-flash-native-audio
-```
-
-Do not use the older `gemini-2.5-flash-live-001` value in this Phase 1 setup.
-
-### PowerShell Activation Issues
-
-Use:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-venv\Scripts\Activate.ps1
-```
-
-### `pip.exe` Blocked By Policy
-
-Try:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-### Agent Hears Its Own Audio
-
-The client includes:
-
-- echo cancellation
-- noise suppression
-- auto gain control
-- self-listening protection during agent playback
-
-If demo conditions are noisy, headphones are still the safest option.
-
-## Cloud Run
-
-Once the runtime service account, Firestore database, and GCS bucket exist, deploy with:
-
-```bash
-gcloud run deploy gemini-live-agent-hack \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --service-account YOUR_RUNTIME_SERVICE_ACCOUNT
-```
-
-## Where To Read More
-
-- teammate setup and daily usage: this `README.md`
-- full Phase 1 implementation notes: [PHASE1.md](./PHASE1.md)
