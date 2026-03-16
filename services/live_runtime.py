@@ -42,6 +42,8 @@ class LiveSessionMetadata:
     latest_inspiration_image_results: list[dict[str, object]] = field(
         default_factory=list
     )
+    room_memory: str | None = None
+    vibe_memory: str | None = None
     latest_generated_render_path: str | None = None
     latest_generated_render_mime_type: str | None = None
     latest_tool_name: str | None = None
@@ -162,6 +164,8 @@ class LiveRuntimeManager:
             "latest_inspiration_image_results": _read_dict_list(
                 persisted_session.get("latest_inspiration_image_results")
             ),
+            "room_memory": _read_optional_text(persisted_session.get("room_memory")),
+            "vibe_memory": _read_optional_text(persisted_session.get("vibe_memory")),
             "latest_generated_render_path": _read_optional_text(
                 persisted_session.get("latest_generated_render_path")
             ),
@@ -206,6 +210,8 @@ class LiveRuntimeManager:
             "latest_inspiration_image_results": list(
                 metadata.latest_inspiration_image_results
             ),
+            "room_memory": metadata.room_memory,
+            "vibe_memory": metadata.vibe_memory,
             "latest_generated_render_path": metadata.latest_generated_render_path,
             "latest_generated_render_mime_type": metadata.latest_generated_render_mime_type,
             "latest_generated_render_available": (
@@ -250,6 +256,8 @@ class LiveRuntimeManager:
         metadata.latest_inspiration_image_results = _read_dict_list(
             persisted_session.get("latest_inspiration_image_results")
         )
+        metadata.room_memory = _read_optional_text(persisted_session.get("room_memory"))
+        metadata.vibe_memory = _read_optional_text(persisted_session.get("vibe_memory"))
         metadata.latest_generated_render_path = _read_optional_text(
             persisted_session.get("latest_generated_render_path")
         )
@@ -316,6 +324,16 @@ class LiveRuntimeManager:
             if metadata.latest_inspiration_search_queries
             else "- No inspiration search plan has been saved yet."
         )
+        room_memory_line = (
+            "- Room memory saved."
+            if metadata.room_memory
+            else "- No room memory has been saved yet."
+        )
+        vibe_memory_line = (
+            "- Vibe memory saved."
+            if metadata.vibe_memory
+            else "- No vibe memory has been saved yet."
+        )
         image_result_line = (
             "- Inspiration image matches are saved for the latest search plan."
             if metadata.latest_inspiration_image_results
@@ -333,6 +351,8 @@ class LiveRuntimeManager:
                 f"- Session status: {metadata.status}.",
                 "- Persona anchor: a playful but practical interior decorator with strong visual opinions.",
                 snapshot_line,
+                room_memory_line,
+                vibe_memory_line,
                 search_plan_line,
                 image_result_line,
                 generated_render_line,
@@ -596,6 +616,52 @@ class LiveRuntimeManager:
             latest_tool_name=tool_name,
             latest_tool_status=status,
             latest_tool_detail=detail,
+        )
+        return self.get_session_context(session_id)
+
+    def save_room_memory(
+        self,
+        *,
+        session_id: str,
+        room_memory: str,
+    ) -> dict[str, object]:
+        cleaned_memory = room_memory.strip()
+        if not cleaned_memory:
+            raise ValueError("Room memory must not be empty.")
+
+        metadata = self._require_session(session_id)
+        metadata.room_memory = cleaned_memory
+        self._firestore_store.append_live_event(
+            session_id=session_id,
+            event_type="room_memory_saved",
+            payload={"room_memory": cleaned_memory},
+        )
+        self._firestore_store.update_live_session(
+            session_id,
+            room_memory=cleaned_memory,
+        )
+        return self.get_session_context(session_id)
+
+    def save_vibe_memory(
+        self,
+        *,
+        session_id: str,
+        vibe_memory: str,
+    ) -> dict[str, object]:
+        cleaned_memory = vibe_memory.strip()
+        if not cleaned_memory:
+            raise ValueError("Vibe memory must not be empty.")
+
+        metadata = self._require_session(session_id)
+        metadata.vibe_memory = cleaned_memory
+        self._firestore_store.append_live_event(
+            session_id=session_id,
+            event_type="vibe_memory_saved",
+            payload={"vibe_memory": cleaned_memory},
+        )
+        self._firestore_store.update_live_session(
+            session_id,
+            vibe_memory=cleaned_memory,
         )
         return self.get_session_context(session_id)
 

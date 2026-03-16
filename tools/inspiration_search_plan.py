@@ -31,6 +31,33 @@ def store_inspiration_search_queries(
         detail="Building inspiration search queries from the user brief.",
     )
 
+    room_memory = str(tool_context.state.get("room_memory", "") or "").strip()
+    vibe_memory = str(tool_context.state.get("vibe_memory", "") or "").strip()
+
+    if not room_memory:
+        runtime.record_tool_activity(
+            session_id=session_id,
+            tool_name=tool_name,
+            status="failed",
+            detail="Room memory must be saved before inspiration search.",
+        )
+        return {
+            "saved": False,
+            "reason": "Room memory must be saved before inspiration search.",
+        }
+
+    if not vibe_memory:
+        runtime.record_tool_activity(
+            session_id=session_id,
+            tool_name=tool_name,
+            status="failed",
+            detail="Vibe memory must be saved before inspiration search.",
+        )
+        return {
+            "saved": False,
+            "reason": "Vibe memory must be saved before inspiration search.",
+        }
+
     if not cleaned_query:
         runtime.record_tool_activity(
             session_id=session_id,

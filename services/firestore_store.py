@@ -46,6 +46,8 @@ class FirestoreStore:
                 "latest_snapshot_timestamp_ms": None,
                 "latest_generated_render_path": None,
                 "latest_generated_render_mime_type": None,
+                "room_memory": None,
+                "vibe_memory": None,
                 "initial_state": initial_state,
             },
             merge=True,
