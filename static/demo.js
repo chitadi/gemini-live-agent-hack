@@ -52,6 +52,7 @@ const state = {
   snapshotTimerId: null,
   sessionPollTimerId: null,
   sessionContextRefreshInFlight: false,
+  lastRenderUrl: "",
 };
 
 const SPEECH_LEVEL_THRESHOLD = 120;
@@ -131,6 +132,9 @@ function renderGeneratedRender(session) {
   if (!renderUrl) {
     return false;
   }
+  if (state.lastRenderUrl === renderUrl) {
+    return true;
+  }
 
   clearChildren(elements.inspirationGallery);
   setInspirationStatus("Final redesign ready");
@@ -170,6 +174,7 @@ function renderGeneratedRender(session) {
   link.appendChild(copy);
   card.appendChild(link);
   elements.inspirationGallery.appendChild(card);
+  state.lastRenderUrl = renderUrl;
   return true;
 }
 
