@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -25,6 +26,75 @@ from services.storage_store import get_storage_store
 logger = logging.getLogger(__name__)
 
 DEMO_USER_ID = "demo-user"
+_DEDUPABLE_WEBSOCKET_MESSAGE_TYPES = {"status", "agent_text", "turn_state"}
+
+
+def _summarize_websocket_payload(payload: dict[str, object]) -> dict[str, object]:
+    summary: dict[str, object] = {
+        "type": payload.get("type"),
+    }
+
+    if "state" in payload:
+        summary["state"] = payload.get("state")
+    if "mime_type" in payload:
+        summary["mime_type"] = payload.get("mime_type")
+    if "turn_complete" in payload:
+        summary["turn_complete"] = payload.get("turn_complete")
+    if "interrupted" in payload:
+        summary["interrupted"] = payload.get("interrupted")
+    if "text" in payload:
+        summary["text_preview"] = str(payload.get("text") or "")[:120]
+    if "detail" in payload:
+        summary["detail_preview"] = str(payload.get("detail") or "")[:120]
+    if "data" in payload:
+        summary["has_data"] = True
+
+    return summary
+
+
+def _fingerprint_websocket_payload(payload: dict[str, object]) -> str | None:
+    message_type = str(payload.get("type") or "").strip()
+    if message_type not in _DEDUPABLE_WEBSOCKET_MESSAGE_TYPES:
+        return None
+
+    fingerprint_payload = {
+        "type": message_type,
+        "state": payload.get("state"),
+        "detail": payload.get("detail"),
+        "text": payload.get("text"),
+        "turn_complete": payload.get("turn_complete"),
+        "interrupted": payload.get("interrupted"),
+    }
+    return json.dumps(fingerprint_payload, sort_keys=True, default=str)
+
+
+async def _send_ws_json(
+    *,
+    websocket: WebSocket,
+    session_id: str,
+    dedupe_cache: dict[str, str],
+    payload: dict[str, object],
+) -> None:
+    payload_summary = _summarize_websocket_payload(payload)
+    fingerprint = _fingerprint_websocket_payload(payload)
+    if fingerprint is not None:
+        message_type = str(payload.get("type") or "").strip()
+        previous_fingerprint = dedupe_cache.get(message_type)
+        if previous_fingerprint == fingerprint:
+            logger.info(
+                "ws_out_deduped session_id=%s payload=%s",
+                session_id,
+                payload_summary,
+            )
+            return
+        dedupe_cache[message_type] = fingerprint
+
+    logger.info(
+        "ws_out session_id=%s payload=%s",
+        session_id,
+        payload_summary,
+    )
+    await websocket.send_json(payload)
 
 
 @dataclass
@@ -51,6 +121,7 @@ class LiveSessionMetadata:
     latest_tool_detail: str | None = None
     latest_user_transcript: str | None = None
     latest_agent_transcript: str | None = None
+    last_websocket_payload_fingerprints: dict[str, str] = field(default_factory=dict)
     primer_sent: bool = False
 
 
@@ -400,14 +471,18 @@ class LiveRuntimeManager:
         live_events: AsyncGenerator,
         session_id: str,
     ) -> None:
+        metadata = self._require_session(session_id)
         async for event in live_events:
             if event.error_message:
-                await websocket.send_json(
-                    {
+                await _send_ws_json(
+                    websocket=websocket,
+                    session_id=session_id,
+                    dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                    payload={
                         "type": "status",
                         "state": "error",
                         "detail": event.error_message,
-                    }
+                    },
                 )
                 continue
 
@@ -433,18 +508,24 @@ class LiveRuntimeManager:
                         part.inline_data
                         and (part.inline_data.mime_type or "").startswith("audio/pcm")
                     ):
-                        await websocket.send_json(
-                            {
+                        await _send_ws_json(
+                            websocket=websocket,
+                            session_id=session_id,
+                            dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                            payload={
                                 "type": "audio",
                                 "mime_type": part.inline_data.mime_type,
                                 "data": base64.b64encode(part.inline_data.data).decode(
                                     "ascii"
                                 ),
-                            }
+                            },
                         )
                     elif part.text and event.partial and not event.output_transcription:
-                        await websocket.send_json(
-                            {"type": "partial_text", "text": part.text}
+                        await _send_ws_json(
+                            websocket=websocket,
+                            session_id=session_id,
+                            dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                            payload={"type": "partial_text", "text": part.text},
                         )
                     elif (
                         part.text
@@ -454,11 +535,14 @@ class LiveRuntimeManager:
                         final_text_parts.append(part.text)
 
                 if final_text_parts:
-                    await websocket.send_json(
-                        {
+                    await _send_ws_json(
+                        websocket=websocket,
+                        session_id=session_id,
+                        dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                        payload={
                             "type": "agent_text",
                             "text": "".join(final_text_parts),
-                        }
+                        },
                     )
                     await self.record_agent_turn(
                         session_id=session_id,
@@ -471,12 +555,15 @@ class LiveRuntimeManager:
                     await self.record_interrupt(
                         session_id=session_id, source="live_api"
                     )
-                await websocket.send_json(
-                    {
+                await _send_ws_json(
+                    websocket=websocket,
+                    session_id=session_id,
+                    dedupe_cache=metadata.last_websocket_payload_fingerprints,
+                    payload={
                         "type": "turn_state",
                         "turn_complete": bool(event.turn_complete),
                         "interrupted": bool(event.interrupted),
-                    }
+                    },
                 )
 
     async def save_snapshot(
